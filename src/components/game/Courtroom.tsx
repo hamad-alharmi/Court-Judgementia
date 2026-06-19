@@ -1,5 +1,6 @@
 "use client";
 // ===== Phase: Courtroom — multi-round split-screen trial (v2) =====
+import { motion } from "framer-motion";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -8,6 +9,7 @@ import { Portrait } from "./Portrait";
 import { CaseIntroOverlay } from "./CaseIntroOverlay";
 import { LawlietEntrance } from "./LawlietEntrance";
 import { ObjectionModal } from "./ObjectionModal";
+import { ConnectionIndicator } from "./ConnectionIndicator";
 import { useGameRoom } from "@/hooks/use-game-room";
 import { useAuth } from "@/hooks/use-auth";
 import { profiles, rooms } from "@/lib/api";
@@ -79,6 +81,7 @@ export function Courtroom({
   const doneRef = useRef<Set<string>>(new Set());
   const draftTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastPhaseSeen = useRef<string>("");
+  const lawlietShownRef = useRef(false);
 
   // merge generated scenario with room's scenarioId
   const scenario = useMemo(() => {
@@ -99,6 +102,13 @@ export function Courtroom({
     ((room.phase === "prosecutor_turn" && myRole === "prosecutor") ||
       (room.phase === "defendant_turn" && myRole === "defendant"));
 
+  // ----- turn notification toast: fire when it becomes the player's turn -----
+  useEffect(() => {
+    if (isMyTurn) {
+      toast.info("Your turn — file your statement!", { duration: 4000 });
+    }
+  }, [isMyTurn]);
+
   const currentTurnIsAI =
     !!room &&
     ((room.phase === "prosecutor_turn" && room.prosecutorIsAI) ||
@@ -117,8 +127,22 @@ export function Courtroom({
       // entering case_intro from lobby
       if (room.phase === "case_intro" && prev === "lobby") {
         if (profile?.character === "lawliet" || profile?.isAdmin) {
+          lawlietShownRef.current = true;
           setShowLawliet(true);
         }
+      }
+    }
+  }, [room?.phase, profile]);
+
+  // Also trigger on mount if already in case_intro (e.g., admin navigates into
+  // a courtroom that is mid-briefing). lastPhaseSeen starts as "" so the
+  // transition-effect above won't fire — this catches that case.
+  useEffect(() => {
+    if (!room || !profile) return;
+    if (room.phase === "case_intro" && !lawlietShownRef.current) {
+      if (profile.character === "lawliet" || profile.isAdmin) {
+        lawlietShownRef.current = true;
+        setShowLawliet(true);
       }
     }
   }, [room?.phase, profile]);
@@ -743,6 +767,7 @@ export function Courtroom({
           scenario={scenario}
           statementCount={room.statementCount}
           onBegin={beginTrialFromIntro}
+          isHost={isHost}
         />
       )}
 
@@ -934,6 +959,7 @@ function CourtHeader({
                 {room.matchmakingType === "ranked" ? "Ranked · AI assist blocked" : "Casual"} · {room.statementCount}×{room.aiDifficulty}
               </div>
             </div>
+            <ConnectionIndicator />
           </div>
           {judging && (
             <div className="flex items-center gap-1.5 border border-gold/40 bg-gold/5 px-2 py-1">
@@ -1163,13 +1189,22 @@ function StatementTimeline({
   statements: Statement[];
   myRole: string;
 }) {
+  const bottomRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [statements.length]);
+
   if (statements.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center gap-2 border border-dashed border-white/10 py-10 text-center">
-        <ScrollText className="h-6 w-6 text-white/20" />
-        <p className="font-mono-terminal text-[11px] text-white/30">
-          No statements filed yet. The prosecution opens.
+      <div className="flex flex-col items-center justify-center gap-2 border border-dashed border-white/10 py-12 text-center">
+        <ScrollText className="h-7 w-7 text-gold/40" />
+        <p className="font-mono-terminal text-[11px] uppercase tracking-[0.15em] text-white/50">
+          Waiting for opening statements.
         </p>
+        <p className="font-mono-terminal text-[9px] uppercase tracking-widest text-white/30">
+          The prosecution begins.
+        </p>
+        <span className="mt-1 h-1 w-1 animate-blink bg-gold" />
       </div>
     );
   }
@@ -1178,6 +1213,7 @@ function StatementTimeline({
       {statements.map((s, i) => (
         <StatementBlock key={s.id} statement={s} index={i} myRole={myRole} />
       ))}
+      <div ref={bottomRef} />
     </div>
   );
 }
@@ -1194,7 +1230,10 @@ function StatementBlock({
   const isP = statement.side === "prosecution";
   const hasSustained = statement.objections.some((o) => o.ruling.ruling === "SUSTAINED");
   return (
-    <div
+    <motion.div
+      initial={{ opacity: 0, x: isP ? -20 : 20 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ duration: 0.3 }}
       className={cn(
         "sharp border p-3",
         isP ? "border-red-500/25 bg-red-500/[0.03]" : "border-emerald-500/25 bg-emerald-500/[0.03]",
@@ -1264,7 +1303,7 @@ function StatementBlock({
           ))}
         </div>
       )}
-    </div>
+    </motion.div>
   );
 }
 
@@ -1325,12 +1364,18 @@ function ArgumentInput({
         ref={textareaRef}
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => {
+          if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+            e.preventDefault();
+            onSubmit();
+          }
+        }}
         placeholder="Compose your argument in plain English. Present evidence from the vault to strengthen your case..."
         className="sharp min-h-[140px] resize-y border-white/20 bg-black font-mono-terminal text-[13px] leading-relaxed text-white placeholder:text-white/20 focus-visible:border-gold"
       />
       <div className="flex items-center justify-between gap-3">
         <p className="font-mono-terminal text-[9px] text-white/30">
-          Auto-submits at 0s. Use [Present Evidence] to inject exhibits at your cursor.
+          Auto-submits at 0s. <span className="text-white/45">Ctrl+Enter</span> to file. Use [Present Evidence] to inject exhibits at your cursor.
         </p>
         <Button
           onClick={onSubmit}
@@ -1408,7 +1453,11 @@ function LobbyView({
   onStart: () => void;
   onShare: () => void;
 }) {
-  const ready = (!!room.prosecutorId || room.prosecutorIsAI) && (!!room.defendantId || room.defendantIsAI);
+  const isRanked = room.matchmakingType === "ranked";
+  const ready = isRanked
+    ? !!room.prosecutorId && !!room.defendantId && !room.prosecutorIsAI && !room.defendantIsAI
+    : (!!room.prosecutorId || room.prosecutorIsAI) && (!!room.defendantId || room.defendantIsAI);
+  const waitingForOpponent = isRanked && !room.defendantId;
   return (
     <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[65fr_35fr]">
       <section className="panel sharp flex flex-col gap-5 p-5">
@@ -1437,6 +1486,7 @@ function LobbyView({
             isAI={room.prosecutorIsAI}
             isMe={myRole === "prosecution"}
             isHost={isHost}
+            isRanked={isRanked}
             onTake={() => onTakeRole("prosecution")}
             onToggleAI={() => onToggleAI("prosecution")}
           />
@@ -1446,6 +1496,7 @@ function LobbyView({
             isAI={room.defendantIsAI}
             isMe={myRole === "defendant"}
             isHost={isHost}
+            isRanked={isRanked}
             onTake={() => onTakeRole("defense")}
             onToggleAI={() => onToggleAI("defense")}
           />
@@ -1453,27 +1504,59 @@ function LobbyView({
 
         {isHost ? (
           <div className="flex flex-col gap-3 border-t border-white/10 pt-4">
-            <div className="flex flex-wrap items-center gap-2">
-              <Button
-                onClick={onCycleScenario}
-                variant="ghost"
-                size="sm"
-                className="sharp h-9 border border-white/20 text-white/70 hover:text-white"
-              >
-                <RefreshCw className="h-3.5 w-3.5" />
-                Preset Case
-              </Button>
-              <Button
-                onClick={onGenerateCase}
-                disabled={genLoading}
-                variant="ghost"
-                size="sm"
-                className="sharp h-9 border border-gold/40 text-gold hover:bg-gold hover:text-black"
-              >
-                {genLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-                Generate AI Case
-              </Button>
-            </div>
+            {isRanked ? (
+              <div className="sharp flex flex-col gap-2 border border-gold/40 bg-gold/[0.03] p-3">
+                <div className="font-mono-terminal text-[9px] uppercase tracking-[0.25em] text-gold">
+                  Chamber Code · share with opponent
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-glow-gold font-mono-terminal text-2xl font-black tracking-[0.4em] text-gold">
+                    {room.code}
+                  </span>
+                  <Button
+                    onClick={onShare}
+                    variant="ghost"
+                    size="sm"
+                    className="sharp h-8 border border-gold/40 px-3 text-gold hover:bg-gold hover:text-black"
+                  >
+                    <Copy className="h-3.5 w-3.5" />
+                    Copy Link
+                  </Button>
+                </div>
+                {waitingForOpponent && (
+                  <div className="flex items-center gap-2 font-mono-terminal text-[11px] text-white/60">
+                    <span>Waiting for opponent</span>
+                    <span className="flex gap-1">
+                      <span className="h-1.5 w-1.5 animate-blink rounded-full bg-gold" />
+                      <span className="h-1.5 w-1.5 animate-blink rounded-full bg-gold" style={{ animationDelay: "0.2s" }} />
+                      <span className="h-1.5 w-1.5 animate-blink rounded-full bg-gold" style={{ animationDelay: "0.4s" }} />
+                    </span>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  onClick={onCycleScenario}
+                  variant="ghost"
+                  size="sm"
+                  className="sharp h-9 border border-white/20 text-white/70 hover:text-white"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  Preset Case
+                </Button>
+                <Button
+                  onClick={onGenerateCase}
+                  disabled={genLoading}
+                  variant="ghost"
+                  size="sm"
+                  className="sharp h-9 border border-gold/40 text-gold hover:bg-gold hover:text-black"
+                >
+                  {genLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                  Generate AI Case
+                </Button>
+              </div>
+            )}
             <Button
               onClick={onStart}
               disabled={!ready}
@@ -1484,19 +1567,48 @@ function LobbyView({
             </Button>
             {!ready && (
               <p className="text-center font-mono-terminal text-[10px] text-white/30">
-                A slot is empty — take the role or fill with AI.
+                {isRanked
+                  ? "Waiting for opponent to join via chamber code."
+                  : "A slot is empty — take the role or fill with AI."}
               </p>
             )}
           </div>
         ) : (
           <div className="flex flex-col items-center gap-3 border-t border-white/10 pt-6">
-            <div className="h-2 w-2 animate-blink bg-gold" />
-            <p className="font-mono-terminal text-sm text-white/60">
-              Waiting for the host to convene the trial...
-            </p>
-            <p className="font-mono-terminal text-[10px] uppercase tracking-widest text-white/30">
-              Chamber code: {room.code}
-            </p>
+            {isRanked ? (
+              <>
+                <div className="text-glow-gold font-mono-terminal text-2xl font-black tracking-[0.4em] text-gold">
+                  {room.code}
+                </div>
+                <p className="font-mono-terminal text-[10px] uppercase tracking-[0.25em] text-white/40">
+                  Chamber Code
+                </p>
+                {waitingForOpponent ? (
+                  <div className="flex items-center gap-2 font-mono-terminal text-sm text-white/60">
+                    <span>Waiting for opponent</span>
+                    <span className="flex gap-1">
+                      <span className="h-1.5 w-1.5 animate-blink rounded-full bg-gold" />
+                      <span className="h-1.5 w-1.5 animate-blink rounded-full bg-gold" style={{ animationDelay: "0.2s" }} />
+                      <span className="h-1.5 w-1.5 animate-blink rounded-full bg-gold" style={{ animationDelay: "0.4s" }} />
+                    </span>
+                  </div>
+                ) : (
+                  <p className="font-mono-terminal text-sm text-white/60">
+                    Opponent joined — waiting for host to convene the trial...
+                  </p>
+                )}
+              </>
+            ) : (
+              <>
+                <div className="h-2 w-2 animate-blink bg-gold" />
+                <p className="font-mono-terminal text-sm text-white/60">
+                  Waiting for the host to convene the trial...
+                </p>
+                <p className="font-mono-terminal text-[10px] uppercase tracking-widest text-white/30">
+                  Chamber code: {room.code}
+                </p>
+              </>
+            )}
           </div>
         )}
       </section>
@@ -1517,6 +1629,7 @@ function RoleSlot({
   isAI,
   isMe,
   isHost,
+  isRanked,
   onTake,
   onToggleAI,
 }: {
@@ -1525,6 +1638,7 @@ function RoleSlot({
   isAI: boolean;
   isMe: boolean;
   isHost: boolean;
+  isRanked: boolean;
   onTake: () => void;
   onToggleAI: () => void;
 }) {
@@ -1552,10 +1666,14 @@ function RoleSlot({
         )}
       </div>
       <div className="font-mono-terminal text-xs font-bold text-white">
-        {name ?? "Empty slot"}
+        {name ?? (isRanked ? "Awaiting..." : "Empty slot")}
         {isMe && <span className="ml-1.5 text-gold">◂ YOU</span>}
       </div>
-      {isHost && (
+      {isRanked ? (
+        <div className="mt-1 font-mono-terminal text-[9px] uppercase tracking-widest text-white/40">
+          {isP ? "Auto-assigned (host)" : "Auto-assigned (opponent)"}
+        </div>
+      ) : isHost ? (
         <div className="mt-1 flex gap-1.5">
           <Button
             size="sm"
@@ -1580,7 +1698,7 @@ function RoleSlot({
             {isAI ? "AI On" : "Fill AI"}
           </Button>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
@@ -1616,7 +1734,10 @@ function VerdictView({
         <div className="font-mono-terminal text-[10px] uppercase tracking-[0.4em] text-white/40">
           Chief Justice Vanguard renders decree
         </div>
-        <div
+        <motion.div
+          initial={{ scale: 0.3, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ duration: 0.6, type: "spring", bounce: 0.4 }}
           className={cn(
             "text-glow-gold font-mono-terminal text-4xl font-black uppercase tracking-[0.2em] sm:text-6xl",
             guilty ? "text-red-400" : "text-emerald-400",
@@ -1624,7 +1745,7 @@ function VerdictView({
           style={!guilty ? { color: "#3fb98a", textShadow: "0 0 20px rgba(63,185,138,0.5)" } : {}}
         >
           {v.verdict}
-        </div>
+        </motion.div>
 
         {!isSpectator && (
           <div

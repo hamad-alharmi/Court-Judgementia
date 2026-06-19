@@ -282,7 +282,7 @@ export function Matchmaking({ onEnterRoom }: { onEnterRoom: (id: string) => void
               onClick={a.onClick}
               disabled={busy !== null}
               className={cn(
-                "group panel-2 sharp flex flex-col gap-3 p-4 text-left transition disabled:opacity-40",
+                "group panel-2 sharp flex flex-col gap-3 p-4 text-left transition hover:shadow-[0_0_20px_-5px_var(--gold)] disabled:opacity-40 disabled:hover:shadow-none",
                 a.tone === "gold" && "border-gold/40 hover:border-gold hover:bg-gold/5",
                 a.tone === "white" && "hover:border-white/50 hover:bg-white/[0.04]",
                 a.tone === "crimson" && "border-red-500/30 hover:border-red-500/70 hover:bg-red-500/5",

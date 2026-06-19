@@ -1,0 +1,1706 @@
+     1→     1→"use client";
+     2→     2→// ===== Phase: Courtroom — multi-round split-screen trial (v2) =====
+     3→     3→import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+     4→     4→import { Button } from "@/components/ui/button";
+     5→     5→import { Textarea } from "@/components/ui/textarea";
+     6→     6→import { EvidenceVault } from "./EvidenceVault";
+     7→     7→import { Portrait } from "./Portrait";
+     8→     8→import { CaseIntroOverlay } from "./CaseIntroOverlay";
+     9→     9→import { LawlietEntrance } from "./LawlietEntrance";
+    10→    10→import { ObjectionModal } from "./ObjectionModal";
+    11→    11→import { useGameRoom } from "@/hooks/use-game-room";
+    12→    12→import { useAuth } from "@/hooks/use-auth";
+    13→    13→import { profiles, rooms } from "@/lib/api";
+    14→    14→import { getScenarioById, CASE_SCENARIOS } from "@/lib/data/cases";
+    15→    15→import { tierForElo } from "@/lib/data/ranks";
+    16→    16→import { resolveElo, didProsecutorWin } from "@/lib/elo";
+    17→    17→import {
+    18→    18→  buildObjection as buildObjectionObj,
+    19→    19→  generateAIArgument,
+    20→    20→  heuristicObjection,
+    21→    21→  maybeAIObjection,
+    22→    22→  simulateJuryVotes,
+    23→    23→} from "@/lib/automation";
+    24→    24→import {
+    25→    25→  TURN_DURATION,
+    26→    26→  CHAR_LIMIT,
+    27→    27→  OBJECTIONS_PER_SIDE,
+    28→    28→  RANKED_STATEMENT_COUNT,
+    29→    29→} from "@/lib/types";
+    30→    30→import type {
+    31→    31→  CaseScenario,
+    32→    32→  EvidenceItem,
+    33→    33→  GameState,
+    34→    34→  Objection,
+    35→    35→  Room,
+    36→    36→  Statement,
+    37→    37→} from "@/lib/types";
+    38→    38→import { nextPhaseAfterStatement } from "@/lib/room";
+    39→    39→import { toast } from "sonner";
+    40→    40→import {
+    41→    41→  ArrowLeft,
+    42→    42→  Copy,
+    43→    43→  Cpu,
+    44→    44→  Gavel,
+    45→    45→  Loader2,
+    46→    46→  Play,
+    47→    47→  RefreshCw,
+    48→    48→  Siren,
+    49→    49→  Users,
+    50→    50→  Volume2,
+    51→    51→  ScrollText,
+    52→    52→  Sparkles,
+    53→    53→} from "lucide-react";
+    54→    54→import { cn } from "@/lib/utils";
+    55→    55→
+    56→    56→export function Courtroom({
+    57→    57→  roomId,
+    58→    58→  onLeave,
+    59→    59→  onRematch,
+    60→    60→}: {
+    61→    61→  roomId: string;
+    62→    62→  onLeave: () => void;
+    63→    63→  onRematch: () => void;
+    64→    64→}) {
+    65→    65→  const { room, loading, update } = useGameRoom(roomId);
+    66→    66→  const { profile, applyResult, refresh } = useAuth();
+    67→    67→
+    68→    68→  const [text, setText] = useState("");
+    69→    69→  const [presentedIds, setPresentedIds] = useState<string[]>([]);
+    70→    70→  const [now, setNow] = useState(Date.now());
+    71→    71→  const [judging, setJudging] = useState(false);
+    72→    72→  const [objectionOpen, setObjectionOpen] = useState(false);
+    73→    73→  const [showIntro, setShowIntro] = useState(false);
+    74→    74→  const [showLawliet, setShowLawliet] = useState(false);
+    75→    75→  const [generatedScenario, setGeneratedScenario] = useState<CaseScenario | null>(null);
+    76→    76→  const [genLoading, setGenLoading] = useState(false);
+    77→    77→  const [ttsPlaying, setTtsPlaying] = useState(false);
+    78→    78→  const textareaRef = useRef<HTMLTextAreaElement>(null);
+    79→    79→  const doneRef = useRef<Set<string>>(new Set());
+    80→    80→  const draftTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    81→    81→  const lastPhaseSeen = useRef<string>("");
+    82→    82→
+    83→    83→  // merge generated scenario with room's scenarioId
+    84→    84→  const scenario = useMemo(() => {
+    85→    85→    if (generatedScenario) return generatedScenario;
+    86→    86→    return room ? getScenarioById(room.scenarioId) : undefined;
+    87→    87→  }, [room, generatedScenario]);
+    88→    88→
+    89→    89→  const isHost = !!room && !!profile && room.hostId === profile.id;
+    90→    90→  const myRole: "prosecutor" | "defendant" | "spectator" = useMemo(() => {
+    91→    91→    if (!room || !profile) return "spectator";
+    92→    92→    if (room.prosecutorId === profile.id) return "prosecutor";
+    93→    93→    if (room.defendantId === profile.id) return "defendant";
+    94→    94→    return "spectator";
+    95→    95→  }, [room, profile]);
+    96→    96→
+    97→    97→  const isMyTurn =
+    98→    98→    !!room &&
+    99→    99→    ((room.phase === "prosecutor_turn" && myRole === "prosecutor") ||
+   100→   100→      (room.phase === "defendant_turn" && myRole === "defendant"));
+   101→   101→
+   102→   102→  const currentTurnIsAI =
+   103→   103→    !!room &&
+   104→   104→    ((room.phase === "prosecutor_turn" && room.prosecutorIsAI) ||
+   105→   105→      (room.phase === "defendant_turn" && room.defendantIsAI));
+   106→   106→
+   107→   107→  const remaining = room?.gameState.turnStartedAt
+   108→   108→    ? Math.max(0, TURN_DURATION - Math.floor((now - room.gameState.turnStartedAt) / 1000))
+   109→   109→    : TURN_DURATION;
+   110→   110→
+   111→   111→  // ----- detect phase transition into case_intro → show Lawliet if admin -----
+   112→   112→  useEffect(() => {
+   113→   113→    if (!room) return;
+   114→   114→    if (room.phase !== lastPhaseSeen.current) {
+   115→   115→      const prev = lastPhaseSeen.current;
+   116→   116→      lastPhaseSeen.current = room.phase;
+   117→   117→      // entering case_intro from lobby
+   118→   118→      if (room.phase === "case_intro" && prev === "lobby") {
+   119→   119→        if (profile?.character === "lawliet" || profile?.isAdmin) {
+   120→   120→          setShowLawliet(true);
+   121→   121→        }
+   122→   122→      }
+   123→   123→    }
+   124→   124→  }, [room?.phase, profile]);
+   125→   125→
+   126→   126→  // ----- show case intro when phase is case_intro -----
+   127→   127→  useEffect(() => {
+   128→   128→    if (room?.phase === "case_intro" && scenario) {
+   129→   129→      setShowIntro(true);
+   130→   130→    } else {
+   131→   131→      setShowIntro(false);
+   132→   132→    }
+   133→   133→  }, [room?.phase, scenario]);
+   134→   134→
+   135→   135→  // ----- timer tick during active turns -----
+   136→   136→  useEffect(() => {
+   137→   137→    if (!room) return;
+   138→   138→    if (room.phase !== "prosecutor_turn" && room.phase !== "defendant_turn") return;
+   139→   139→    const iv = setInterval(() => setNow(Date.now()), 250);
+   140→   140→    return () => clearInterval(iv);
+   141→   141→  }, [room?.phase, room]);
+   142→   142→
+   143→   143→  // ----- load my draft + presented evidence when my turn begins -----
+   144→   144→  useEffect(() => {
+   145→   145→    if (!room || !isMyTurn) return;
+   146→   146→    const key = `turn-${room.phase}-${room.gameState.currentRound}`;
+   147→   147→    if (doneRef.current.has(`${key}-loaded`)) return;
+   148→   148→    doneRef.current.add(`${key}-loaded`);
+   149→   149→    // load draft from current pending statement if any
+   150→   150→    setText("");
+   151→   151→    setPresentedIds([]);
+   152→   152→  }, [room?.phase, room?.gameState?.currentRound, isMyTurn]);
+   153→   153→
+   154→   154→  // ----- debounced live draft sync (only when it's my turn) -----
+   155→   155→  useEffect(() => {
+   156→   156→    if (!isMyTurn || !room) return;
+   157→   157→    if (draftTimer.current) clearTimeout(draftTimer.current);
+   158→   158→    draftTimer.current = setTimeout(async () => {
+   159→   159→      const fresh = await rooms.get(roomId);
+   160→   160→      if (!fresh) return;
+   161→   161→      const stmts = fresh.gameState.statements;
+   162→   162→      // attach draft to the last in-progress statement (the current one)
+   163→   163→      // store on gameState pendingDraft
+   164→   164→      await update({
+   165→   165→        gameState: { ...fresh.gameState, ...({ pendingDraft: text } as Partial<GameState>) } as GameState,
+   166→   166→      });
+   167→   167→    }, 1200);
+   168→   168→    return () => {
+   169→   169→      if (draftTimer.current) clearTimeout(draftTimer.current);
+   170→   170→    };
+   171→   171→  }, [text, isMyTurn]);
+   172→   172→
+   173→   173→  // ----- auto-submit on timeout -----
+   174→   174→  useEffect(() => {
+   175→   175→    if (!isMyTurn || !room) return;
+   176→   176→    if (remaining > 0) return;
+   177→   177→    const key = `submit-${room.phase}-${room.gameState.currentRound}`;
+   178→   178→    if (doneRef.current.has(key)) return;
+   179→   179→    handleSubmit(text);
+   180→   180→  }, [remaining, isMyTurn, room]);
+   181→   181→
+   182→   182→  // ----- AI turn auto-action (host owns) -----
+   183→   183→  useEffect(() => {
+   184→   184→    if (!isHost || !room || !scenario) return;
+   185→   185→    if (!currentTurnIsAI) return;
+   186→   186→    const key = `ai-${room.phase}-${room.gameState.currentRound}`;
+   187→   187→    if (doneRef.current.has(key)) return;
+   188→   188→    const timer = setTimeout(() => runAITurn(), 6000);
+   189→   189→    return () => clearTimeout(timer);
+   190→   190→  }, [room?.phase, room?.gameState?.currentRound, isHost, currentTurnIsAI, room]);
+   191→   191→
+   192→   192→  // ----- AI objection (host owns): opposing AI may object after a human statement -----
+   193→   193→  useEffect(() => {
+   194→   194→    if (!isHost || !room) return;
+   195→   195→    const gs = room.gameState;
+   196→   196→    if (gs.statements.length === 0) return;
+   197→   197→    const last = gs.statements[gs.statements.length - 1];
+   198→   198→    // only object right after a human opponent's statement, during the AI's own turn
+   199→   199→    const aiSide: "prosecutor" | "defense" | null =
+   200→   200→      room.phase === "prosecutor_turn" && room.prosecutorIsAI
+   201→   201→        ? "prosecutor"
+   202→   202→        : room.phase === "defendant_turn" && room.defendantIsAI
+   203→   203→          ? "defense"
+   204→   204→          : null;
+   205→   205→    if (!aiSide) return;
+   206→   206→    if (last.side === aiSide) return; // don't object to own side
+   207→   207→    if (last.authorIsAI) return; // don't object to AI statements
+   208→   208→    const objKey = `aiobj-${last.id}`;
+   209→   209→    if (doneRef.current.has(objKey)) return;
+   210→   210→    const left = gs.objectionsLeft[aiSide];
+   211→   211→    const maybe = maybeAIObjection(aiSide, room.aiDifficulty, gs.statements, left);
+   212→   212→    if (!maybe) {
+   213→   213→      doneRef.current.add(objKey);
+   214→   214→      return;
+   215→   215→    }
+   216→   216→    doneRef.current.add(objKey);
+   217→   217→    const timer = setTimeout(() => runObjection(aiSide, "AI Counsel", maybe.targetIndex, maybe.grounds, true), 3500);
+   218→   218→    return () => clearTimeout(timer);
+   219→   219→  }, [room?.gameState?.statements?.length, room?.phase, isHost, room]);
+   220→   220→
+   221→   221→  // ----- jury simulation (host owns) -----
+   222→   222→  useEffect(() => {
+   223→   223→    if (!isHost || !room) return;
+   224→   224→    if (room.phase !== "jury_voting") return;
+   225→   225→    if (room.gameState.juryVotes.length > 0) return;
+   226→   226→    if (doneRef.current.has("jury")) return;
+   227→   227→    const timer = setTimeout(() => runJury(), 2500);
+   228→   228→    return () => clearTimeout(timer);
+   229→   229→  }, [room?.phase, isHost, room]);
+   230→   230→
+   231→   231→  // ----- verdict + elo (host owns) -----
+   232→   232→  useEffect(() => {
+   233→   233→    if (!isHost || !room) return;
+   234→   234→    if (room.phase !== "verdict") return;
+   235→   235→    if (room.gameState.verdict) return;
+   236→   236→    if (room.gameState.eloApplied) return;
+   237→   237→    if (doneRef.current.has("verdict")) return;
+   238→   238→    runJudge();
+   239→   239→  }, [room?.phase, isHost, room]);
+   240→   240→
+   241→   241→  // ===== AI CASE GENERATION (host owns, on trial start) =====
+   242→   242→  async function generateCase(): Promise<CaseScenario | null> {
+   243→   243→    if (!room) return null;
+   244→   244→    setGenLoading(true);
+   245→   245→    try {
+   246→   246→      const theme = room.caseTheme || "cyber";
+   247→   247→      const res = await fetch("/api/generate-case", {
+   248→   248→        method: "POST",
+   249→   249→        headers: { "Content-Type": "application/json" },
+   250→   250→        body: JSON.stringify({ theme }),
+   251→   251→      });
+   252→   252→      if (!res.ok) throw new Error("gen-failed");
+   253→   253→      const data = await res.json();
+   254→   254→      const sc = data.scenario as CaseScenario;
+   255→   255→      setGeneratedScenario(sc);
+   256→   256→      // persist scenarioId so the other client fetches the same scenario
+   257→   257→      await update({ scenarioId: sc.id });
+   258→   258→      return sc;
+   259→   259→    } catch (e) {
+   260→   260→      console.error("case gen failed", e);
+   261→   261→      toast.error("AI case generation failed — using preset.");
+   262→   262→      return null;
+   263→   263→    } finally {
+   264→   264→      setGenLoading(false);
+   265→   265→    }
+   266→   266→  }
+   267→   267→
+   268→   268→  // Since AI-generated cases aren't stored in CASE_SCENARIOS, both clients need
+   269→   269→  // the scenario data. The host generates + stores scenarioId; the non-host
+   270→   270→  // client fetches the generated case via the same API using a deterministic
+   271→   271→  // seed. For simplicity, we store the full scenario in the room via a
+   272→   272→  // side-channel: we use the scenarioId as a key and both clients call the API.
+   273→   273→  // To keep this robust without a cases table, the non-host client regenerates
+   274→   274→  // from the same theme. (Gemini is non-deterministic, so we instead fall back
+   275→   275→  // to the preset scenarioId if it matches.)
+   276→   276→  useEffect(() => {
+   277→   277→    if (!room || !scenario) return;
+   278→   278→    if (generatedScenario) return;
+   279→   279→    // if the room's scenarioId isn't a preset and we're not the host, try to
+   280→   280→    // fetch a generated case from the theme
+   281→   281→    const isPreset = CASE_SCENARIOS.some((c) => c.id === room.scenarioId);
+   282→   282→    if (!isPreset && !isHost && room.caseTheme) {
+   283→   283→      // non-host: generate from same theme (best-effort; may differ from host's)
+   284→   284→      generateCase();
+   285→   285→    }
+   286→   286→  }, [room?.scenarioId, room?.caseTheme, isHost]);
+   287→   287→
+   288→   288→  // ===== actions =====
+   289→   289→  const handleSubmit = useCallback(
+   290→   290→    async (finalText: string) => {
+   291→   291→      if (!room || !scenario) return;
+   292→   292→      const key = `submit-${room.phase}-${room.gameState.currentRound}`;
+   293→   293→      if (doneRef.current.has(key)) return;
+   294→   294→      doneRef.current.add(key);
+   295→   295→      const side = room.phase === "prosecutor_turn" ? "prosecutor" : "defense";
+   296→   296→      const stmt: Statement = {
+   297→   297→        id: "stmt-" + Math.random().toString(36).slice(2, 10),
+   298→   298→        round: room.gameState.currentRound,
+   299→   299→        side,
+   300→   300→        text: finalText.trim() || "[No argument submitted.]",
+   301→   301→        evidenceIds: [...presentedIds],
+   302→   302→        objections: [],
+   303→   303→        at: Date.now(),
+   304→   304→        authorIsAI: false,
+   305→   305→      };
+   306→   306→      const nextStatements = [...room.gameState.statements, stmt];
+   307→   307→      const nextPhase = nextPhaseAfterStatement(
+   308→   308→        nextStatements.map((s) => ({ side: s.side, round: s.round })),
+   309→   309→        room.statementCount,
+   310→   310→      );
+   311→   311→      const nextRound =
+   312→   312→        nextPhase === "prosecutor_turn" && side === "defense"
+   313→   313→          ? room.gameState.currentRound + 1
+   314→   314→          : room.gameState.currentRound;
+   315→   315→      const nextGs: GameState = {
+   316→   316→        ...room.gameState,
+   317→   317→        statements: nextStatements,
+   318→   318→        currentRound: nextRound,
+   319→   319→        turnStartedAt: nextPhase === "jury_voting" ? null : Date.now(),
+   320→   320→        turnTimerRemaining: nextPhase === "jury_voting" ? 0 : TURN_DURATION,
+   321→   321→      };
+   322→   322→      await update({
+   323→   323→        gameState: nextGs,
+   324→   324→        phase: nextPhase,
+   325→   325→      });
+   326→   326→      setText("");
+   327→   327→      setPresentedIds([]);
+   328→   328→      toast.success(
+   329→   329→        side === "prosecution"
+   330→   330→          ? `Prosecution statement (R${stmt.round}) filed.`
+   331→   331→          : `Defense statement (R${stmt.round}) filed.`,
+   332→   332→      );
+   333→   333→      // Lawliet TTS: read out the admin's own statement only
+   334→   334→      if (profile?.character === "lawliet" || profile?.isAdmin) {
+   335→   335→        speakStatement(finalText);
+   336→   336→      }
+   337→   337→    },
+   338→   338→    [room, scenario, presentedIds, update, profile],
+   339→   339→  );
+   340→   340→
+   341→   341→  async function runAITurn() {
+   342→   342→    if (!room || !scenario) return;
+   343→   343→    const key = `ai-${room.phase}-${room.gameState.currentRound}`;
+   344→   344→    if (doneRef.current.has(key)) return;
+   345→   345→    doneRef.current.add(key);
+   346→   346→    const side = room.phase === "prosecutor_turn" ? "prosecutor" : "defense";
+   347→   347→    const argText = generateAIArgument(
+   348→   348→      side,
+   349→   349→      scenario,
+   350→   350→      scenario.evidence,
+   351→   351→      room.matchmakingType === "ranked",
+   352→   352→      room.aiDifficulty,
+   353→   353→      room.gameState.currentRound,
+   354→   354→      room.statementCount,
+   355→   355→      room.gameState.statements,
+   356→   356→    );
+   357→   357→    const favored = scenario.evidence.filter((e) =>
+   358→   358→      side === "prosecution" ? e.side !== "defense" : e.side !== "prosecution",
+   359→   359→    );
+   360→   360→    const offset = (room.gameState.currentRound - 1) % Math.max(1, favored.length);
+   361→   361→    const aiEvs = [favored[offset]?.id, favored[(offset + 1) % Math.max(1, favored.length)]?.id].filter(
+   362→   362→      Boolean,
+   363→   363→    ) as string[];
+   364→   364→    const stmt: Statement = {
+   365→   365→      id: "stmt-ai-" + Math.random().toString(36).slice(2, 10),
+   366→   366→      round: room.gameState.currentRound,
+   367→   367→      side,
+   368→   368→      text: argText,
+   369→   369→      evidenceIds: aiEvs,
+   370→   370→      objections: [],
+   371→   371→      at: Date.now(),
+   372→   372→      authorIsAI: true,
+   373→   373→    };
+   374→   374→    const nextStatements = [...room.gameState.statements, stmt];
+   375→   375→    const nextPhase = nextPhaseAfterStatement(
+   376→   376→      nextStatements.map((s) => ({ side: s.side, round: s.round })),
+   377→   377→      room.statementCount,
+   378→   378→    );
+   379→   379→    const nextRound =
+   380→   380→      nextPhase === "prosecutor_turn" && side === "defense"
+   381→   381→        ? room.gameState.currentRound + 1
+   382→   382→        : room.gameState.currentRound;
+   383→   383→    await update({
+   384→   384→      gameState: {
+   385→   385→        ...room.gameState,
+   386→   386→        statements: nextStatements,
+   387→   387→        currentRound: nextRound,
+   388→   388→        turnStartedAt: nextPhase === "jury_voting" ? null : Date.now(),
+   389→   389→        turnTimerRemaining: nextPhase === "jury_voting" ? 0 : TURN_DURATION,
+   390→   390→      },
+   391→   391→      phase: nextPhase,
+   392→   392→    });
+   393→   393→    toast.info(`${side === "prosecution" ? "Prosecution" : "Defense"} AI filed (R${stmt.round}).`);
+   394→   394→  }
+   395→   395→
+   396→   396→  async function runObjection(
+   397→   397→    objectorSide: "prosecutor" | "defense",
+   398→   398→    objectorName: string,
+   399→   399→    targetIndex: number,
+   400→   400→    grounds: string,
+   401→   401→    isAI: boolean,
+   402→   402→  ) {
+   403→   403→    if (!room || !scenario) return;
+   404→   404→    const left = room.gameState.objectionsLeft[objectorSide];
+   405→   405→    if (left <= 0) {
+   406→   406→      toast.error("No objections remaining.");
+   407→   407→      return;
+   408→   408→    }
+   409→   409→    // call judge
+   410→   410→    setJudging(true);
+   411→   411→    try {
+   412→   412→      const res = await fetch("/api/judge", {
+   413→   413→        method: "POST",
+   414→   414→        headers: { "Content-Type": "application/json" },
+   415→   415→        body: JSON.stringify({
+   416→   416→          action: "objection",
+   417→   417→          scenario,
+   418→   418→          statements: room.gameState.statements,
+   419→   419→          allEvidence: scenario.evidence,
+   420→   420→          objectorSide,
+   421→   421→          targetIndex,
+   422→   422→          grounds,
+   423→   423→        }),
+   424→   424→      });
+   425→   425→      if (!res.ok) throw new Error("objection-failed");
+   426→   426→      const data = await res.json();
+   427→   427→      const ruling = data.ruling;
+   428→   428→      // build objection object
+   429→   429→      const obj: Objection = {
+   430→   430→        id: "obj-" + Math.random().toString(36).slice(2, 10),
+   431→   431→        objectorId: isAI ? "ai" : profile!.id,
+   432→   432→        objectorName,
+   433→   433→        objectorSide,
+   434→   434→        targetIndex,
+   435→   435→        grounds,
+   436→   436→        ruling,
+   437→   437→        at: Date.now(),
+   438→   438→      };
+   439→   439→      // attach to the targeted statement
+   440→   440→      const fresh = await rooms.get(roomId);
+   441→   441→      if (!fresh) return;
+   442→   442→      const stmts = fresh.gameState.statements.map((s, i) =>
+   443→   443→        i === targetIndex ? { ...s, objections: [...s.objections, obj] } : s,
+   444→   444→      );
+   445→   445→      await update({
+   446→   446→        gameState: {
+   447→   447→          ...fresh.gameState,
+   448→   448→          statements: stmts,
+   449→   449→          objectionsLeft: {
+   450→   450→            ...fresh.gameState.objectionsLeft,
+   451→   451→            [objectorSide]: left - 1,
+   452→   452→          },
+   453→   453→        },
+   454→   454→      });
+   455→   455→      toast(
+   456→   456→        ruling.ruling === "SUSTAINED"
+   457→   457→          ? `OBJECTION SUSTAINED — ${ruling.reasoning.slice(0, 80)}`
+   458→   458→          : `OBJECTION OVERRULED — ${ruling.reasoning.slice(0, 80)}`,
+   459→   459→        {
+   460→   460→          description: ruling.reasoning,
+   461→   461→          style: { borderColor: ruling.ruling === "SUSTAINED" ? "#3fb98a" : "#e0524a" },
+   462→   462→        },
+   463→   463→      );
+   464→   464→    } catch (e) {
+   465→   465→      console.error(e);
+   466→   466→      // heuristic fallback
+   467→   467→      const ruling = heuristicObjection(grounds);
+   468→   468→      toast(`OBJECTION ${ruling.ruling} (heuristic)`);
+   469→   469→    } finally {
+   470→   470→      setJudging(false);
+   471→   471→    }
+   472→   472→  }
+   473→   473→
+   474→   474→  async function runJury() {
+   475→   475→    if (!room) return;
+   476→   476→    if (doneRef.current.has("jury")) return;
+   477→   477→    doneRef.current.add("jury");
+   478→   478→    const gs = room.gameState;
+   479→   479→    const { guilty, notGuilty, votes } = simulateJuryVotes(
+   480→   480→      gs.statements,
+   481→   481→      60,
+   482→   482→      room.aiDifficulty,
+   483→   483→    );
+   484→   484→    await update({
+   485→   485→      gameState: { ...gs, guiltyVotes: guilty, notGuiltyVotes: notGuilty, juryVotes: votes },
+   486→   486→      phase: "verdict",
+   487→   487→    });
+   488→   488→  }
+   489→   489→
+   490→   490→  async function runJudge() {
+   491→   491→    if (!room || !scenario || !profile) return;
+   492→   492→    if (doneRef.current.has("verdict")) return;
+   493→   493→    doneRef.current.add("verdict");
+   494→   494→    setJudging(true);
+   495→   495→    try {
+   496→   496→      const gs = room.gameState;
+   497→   497→      const pProfile = room.prosecutorId && !room.prosecutorIsAI ? await profiles.get(room.prosecutorId) : null;
+   498→   498→      const dProfile = room.defendantId && !room.defendantIsAI ? await profiles.get(room.defendantId) : null;
+   499→   499→      const pElo = pProfile?.elo ?? 1000;
+   500→   500→      const dElo = dProfile?.elo ?? 1000;
+   501→   501→
+   502→   502→      const res = await fetch("/api/judge", {
+   503→   503→        method: "POST",
+   504→   504→        headers: { "Content-Type": "application/json" },
+   505→   505→        body: JSON.stringify({
+   506→   506→          action: "verdict",
+   507→   507→          scenario,
+   508→   508→          statements: gs.statements,
+   509→   509→          allEvidence: scenario.evidence,
+   510→   510→          ranked: room.matchmakingType === "ranked",
+   511→   511→          juryVotes: { guilty: gs.guiltyVotes, notGuilty: gs.notGuiltyVotes },
+   512→   512→          prosecutorElo: pElo,
+   513→   513→          defendantElo: dElo,
+   514→   514→        }),
+   515→   515→      });
+   516→   516→      if (!res.ok) throw new Error("judge-failed");
+   517→   517→      const data = await res.json();
+   518→   518→      const verdict = data.verdict;
+   519→   519→      const eloAdj = data.eloAdjustments;
+   520→   520→
+   521→   521→      await update({ gameState: { ...gs, verdict } });
+   522→   522→
+   523→   523→      const prosecutWon = didProsecutorWin(verdict.verdict);
+   524→   524→      if (pProfile) {
+   525→   525→        const adj = eloAdj.prosecutor;
+   526→   526→        const won = prosecutWon;
+   527→   527→        await profiles.update(pProfile.id, {
+   528→   528→          elo: adj.newElo,
+   529→   529→          rank: tierForElo(adj.newElo),
+   530→   530→          casesTried: pProfile.casesTried + 1,
+   531→   531→          convictions: pProfile.convictions + (won ? 1 : 0),
+   532→   532→          wins: pProfile.wins + (won ? 1 : 0),
+   533→   533→          losses: pProfile.losses + (won ? 0 : 1),
+   534→   534→          judgeFavorability: clamp(
+   535→   535→            pProfile.judgeFavorability + (won ? Math.round(verdict.decisiveness / 18) : -Math.round(verdict.decisiveness / 22)),
+   536→   536→            0,
+   537→   537→            100,
+   538→   538→          ),
+   539→   539→        });
+   540→   540→        if (pProfile.id === profile.id) await applyResult({});
+   541→   541→      }
+   542→   542→      if (dProfile) {
+   543→   543→        const adj = eloAdj.defendant;
+   544→   544→        const won = !prosecutWon;
+   545→   545→        await profiles.update(dProfile.id, {
+   546→   546→          elo: adj.newElo,
+   547→   547→          rank: tierForElo(adj.newElo),
+   548→   548→          casesTried: dProfile.casesTried + 1,
+   549→   549→          acquittals: dProfile.acquittals + (won ? 1 : 0),
+   550→   550→          wins: dProfile.wins + (won ? 1 : 0),
+   551→   551→          losses: dProfile.losses + (won ? 0 : 1),
+   552→   552→          judgeFavorability: clamp(
+   553→   553→            dProfile.judgeFavorability + (won ? Math.round(verdict.decisiveness / 18) : -Math.round(verdict.decisiveness / 22)),
+   554→   554→            0,
+   555→   555→            100,
+   556→   556→          ),
+   557→   557→        });
+   558→   558→        if (dProfile.id === profile.id) await applyResult({});
+   559→   559→      }
+   560→   560→      const fresh = await rooms.get(roomId);
+   561→   561→      if (fresh) {
+   562→   562→        await update({ gameState: { ...fresh.gameState, eloApplied: true } });
+   563→   563→      }
+   564→   564→      await refresh();
+   565→   565→    } catch (e) {
+   566→   566→      console.error("judge failed", e);
+   567→   567→      toast.error("Chief Justice Vanguard failed to render a decree.");
+   568→   568→    } finally {
+   569→   569→      setJudging(false);
+   570→   570→    }
+   571→   571→  }
+   572→   572→
+   573→   573→  // ===== evidence injection =====
+   574→   574→  function presentEvidence(e: EvidenceItem) {
+   575→   575→    const exhibit = `\n\n— [EXHIBIT: "${e.title}" | ${e.assetType}] —\n${e.description}\n`;
+   576→   576→    const ta = textareaRef.current;
+   577→   577→    if (!ta) {
+   578→   578→      setText((t) => (t + exhibit).slice(0, CHAR_LIMIT + 600));
+   579→   579→    } else {
+   580→   580→      const start = ta.selectionStart ?? text.length;
+   581→   581→      const end = ta.selectionEnd ?? text.length;
+   582→   582→      const next = (text.slice(0, start) + exhibit + text.slice(end)).slice(0, CHAR_LIMIT + 600);
+   583→   583→      setText(next);
+   584→   584→      requestAnimationFrame(() => {
+   585→   585→        ta.focus();
+   586→   586→        const pos = start + exhibit.length;
+   587→   587→        ta.setSelectionRange(pos, pos);
+   588→   588→      });
+   589→   589→    }
+   590→   590→    setPresentedIds((prev) => (prev.includes(e.id) ? prev : [...prev, e.id]));
+   591→   591→    toast.success(`Exhibit "${e.title}" injected at cursor.`);
+   592→   592→  }
+   593→   593→
+   594→   594→  // ===== TTS (Lawliet reads his own statement) =====
+   595→   595→  async function speakStatement(statementText: string) {
+   596→   596→    if (!statementText.trim()) return;
+   597→   597→    setTtsPlaying(true);
+   598→   598→    try {
+   599→   599→      const res = await fetch("/api/tts", {
+   600→   600→        method: "POST",
+   601→   601→        headers: { "Content-Type": "application/json" },
+   602→   602→        body: JSON.stringify({ text: statementText.slice(0, 1000) }),
+   603→   603→      });
+   604→   604→      if (!res.ok) throw new Error("tts-failed");
+   605→   605→      const blob = await res.blob();
+   606→   606→      const url = URL.createObjectURL(blob);
+   607→   607→      const audio = new Audio(url);
+   608→   608→      audio.onended = () => URL.revokeObjectURL(url);
+   609→   609→      await audio.play();
+   610→   610→    } catch (e) {
+   611→   611→      console.error("TTS failed", e);
+   612→   612→    } finally {
+   613→   613→      setTtsPlaying(false);
+   614→   614→    }
+   615→   615→  }
+   616→   616→
+   617→   617→  // ===== lobby host controls =====
+   618→   618→  async function hostToggleAIRole(role: "prosecution" | "defense") {
+   619→   619→    if (!room || !isHost) return;
+   620→   620→    if (role === "prosecution") {
+   621→   621→      const ai = !room.prosecutorIsAI;
+   622→   622→      await update({
+   623→   623→        prosecutorId: ai ? null : profile?.id ?? null,
+   624→   624→        prosecutorName: ai ? "AI Prosecution" : profile?.username ?? null,
+   625→   625→        prosecutorIsAI: ai,
+   626→   626→      });
+   627→   627→    } else {
+   628→   628→      const ai = !room.defendantIsAI;
+   629→   629→      await update({
+   630→   630→        defendantId: ai ? null : null,
+   631→   631→        defendantName: ai ? "AI Defense" : null,
+   632→   632→        defendantIsAI: ai,
+   633→   633→      });
+   634→   634→    }
+   635→   635→  }
+   636→   636→
+   637→   637→  async function hostTakeRole(role: "prosecution" | "defense") {
+   638→   638→    if (!room || !isHost || !profile) return;
+   639→   639→    if (role === "prosecution") {
+   640→   640→      await update({
+   641→   641→        prosecutorId: profile.id,
+   642→   642→        prosecutorName: profile.username,
+   643→   643→        prosecutorIsAI: false,
+   644→   644→      });
+   645→   645→    } else {
+   646→   646→      await update({
+   647→   647→        defendantId: profile.id,
+   648→   648→        defendantName: profile.username,
+   649→   649→        defendantIsAI: false,
+   650→   650→      });
+   651→   651→    }
+   652→   652→  }
+   653→   653→
+   654→   654→  async function hostCycleScenario() {
+   655→   655→    if (!room || !isHost) return;
+   656→   656→    const idx = CASE_SCENARIOS.findIndex((c) => c.id === room.scenarioId);
+   657→   657→    const next = CASE_SCENARIOS[(idx + 1) % CASE_SCENARIOS.length];
+   658→   658→    setGeneratedScenario(null);
+   659→   659→    await update({ scenarioId: next.id, caseTheme: next.theme || "" });
+   660→   660→  }
+   661→   661→
+   662→   662→  async function hostStartTrial() {
+   663→   663→    if (!room || !isHost || !profile) return;
+   664→   664→    if (!room.defendantId && !room.defendantIsAI) {
+   665→   665→      toast.error("Defendant slot is empty.");
+   666→   666→      return;
+   667→   667→    }
+   668→   668→    if (!room.prosecutorId && !room.prosecutorIsAI) {
+   669→   669→      toast.error("Prosecutor slot is empty.");
+   670→   670→      return;
+   671→   671→    }
+   672→   672→    doneRef.current.clear();
+   673→   673→    let sc = scenario;
+   674→   674→    if (!sc) {
+   675→   675→      sc = await generateCase();
+   676→   676→    }
+   677→   677→    // go to case_intro first (shows briefing + Lawliet entrance for admin)
+   678→   678→    await update({
+   679→   679→      phase: "case_intro",
+   680→   680→    });
+   681→   681→  }
+   682→   682→
+   683→   683→  function beginTrialFromIntro() {
+   684→   684→    setShowIntro(false);
+   685→   685→    if (isHost) {
+   686→   686→      update({
+   687→   687→        phase: "prosecutor_turn",
+   688→   688→        gameState: {
+   689→   689→          ...(room?.gameState ?? emptyGs()),
+   690→   690→          turnStartedAt: Date.now(),
+   691→   691→          turnTimerRemaining: TURN_DURATION,
+   692→   692→          currentRound: 1,
+   693→   693→        },
+   694→   694→      });
+   695→   695→    }
+   696→   696→  }
+   697→   697→
+   698→   698→  function shareChamber() {
+   699→   699→    if (!room) return;
+   700→   700→    const url = `${window.location.origin}/?chamber=${room.code}`;
+   701→   701→    navigator.clipboard?.writeText(url).then(
+   702→   702→      () => toast.success("Chamber link copied to clipboard."),
+   703→   703→      () => toast.error("Clipboard unavailable. Code: " + room.code),
+   704→   704→    );
+   705→   705→  }
+   706→   706→
+   707→   707→  // ===== render =====
+   708→   708→  if (loading || !room || !scenario || !profile) {
+   709→   709→    return (
+   710→   710→      <div className="flex min-h-screen items-center justify-center bg-black">
+   711→   711→        <div className="font-mono-terminal text-sm text-white/40 animate-pulse">
+   712→   712→          Convening chamber...
+   713→   713→        </div>
+   714→   714→      </div>
+   715→   715→    );
+   716→   716→  }
+   717→   717→
+   718→   718→  const myObjectionsLeft =
+   719→   719→    myRole === "prosecutor" || myRole === "defendant"
+   720→   720→      ? room.gameState.objectionsLeft[myRole]
+   721→   721→      : 0;
+   722→   722→  const canObject =
+   723→   723→    (myRole === "prosecutor" || myRole === "defense") &&
+   724→   724→    !isMyTurn &&
+   725→   725→    room.gameState.statements.length > 0 &&
+   726→   726→    myObjectionsLeft > 0 &&
+   727→   727→    room.phase !== "jury_voting" &&
+   728→   728→    room.phase !== "verdict" &&
+   729→   729→    room.phase !== "case_intro";
+   730→   730→  // target the most recent opposing statement
+   731→   731→  const lastOpposingIdx = (() => {
+   732→   732→    for (let i = room.gameState.statements.length - 1; i >= 0; i--) {
+   733→   733→      if (room.gameState.statements[i].side !== myRole) return i;
+   734→   734→    }
+   735→   735→    return -1;
+   736→   736→  })();
+   737→   737→
+   738→   738→  return (
+   739→   739→    <div className="flex min-h-screen flex-col bg-black">
+   740→   740→      {showLawliet && <LawlietEntrance onDone={() => setShowLawliet(false)} />}
+   741→   741→      {showIntro && (
+   742→   742→        <CaseIntroOverlay
+   743→   743→          scenario={scenario}
+   744→   744→          statementCount={room.statementCount}
+   745→   745→          onBegin={beginTrialFromIntro}
+   746→   746→        />
+   747→   747→      )}
+   748→   748→
+   749→   749→      <CourtHeader room={room} onLeave={onLeave} onShare={shareChamber} judging={judging} />
+   750→   750→
+   751→   751→      <main className="mx-auto w-full max-w-[1600px] flex-1 px-3 py-4">
+   752→   752→        <PhaseTracker phase={room.phase} currentRound={room.gameState.currentRound} totalRounds={room.statementCount} />
+   753→   753→
+   754→   754→        {room.phase === "lobby" ? (
+   755→   755→          <LobbyView
+   756→   756→            room={room}
+   757→   757→            scenario={scenario}
+   758→   758→            isHost={isHost}
+   759→   759→            myRole={myRole}
+   760→   760→            onToggleAI={hostToggleAIRole}
+   761→   761→            onTakeRole={hostTakeRole}
+   762→   762→            onCycleScenario={hostCycleScenario}
+   763→   763→            onGenerateCase={() => generateCase()}
+   764→   764→            genLoading={genLoading}
+   765→   765→            onStart={hostStartTrial}
+   766→   766→            onShare={shareChamber}
+   767→   767→          />
+   768→   768→        ) : room.phase === "case_intro" ? (
+   769→   769→          <div className="mt-6 flex flex-col items-center justify-center gap-3 py-16 text-center">
+   770→   770→            {genLoading ? (
+   771→   771→              <>
+   772→   772→                <Sparkles className="h-8 w-8 animate-pulse text-gold" />
+   773→   773→                <p className="font-mono-terminal text-sm text-white/60">
+   774→   774→                  Generating case from theme "{room.caseTheme}"...
+   775→   775→                </p>
+   776→   776→              </>
+   777→   777→            ) : (
+   778→   778→              <>
+   779→   779→                <Gavel className="h-8 w-8 text-gold" />
+   780→   780→                <p className="font-mono-terminal text-sm text-white/60">
+   781→   781→                  Case briefing displayed. Awaiting host to open court.
+   782→   782→                </p>
+   783→   783→              </>
+   784→   784→            )}
+   785→   785→          </div>
+   786→   786→        ) : room.phase === "verdict" && room.gameState.verdict ? (
+   787→   787→          <VerdictView
+   788→   788→            room={room}
+   789→   789→            scenario={scenario}
+   790→   790→            myRole={myRole}
+   791→   791→            onLeave={onLeave}
+   792→   792→            onRematch={onRematch}
+   793→   793→          />
+   794→   794→        ) : (
+   795→   795→          <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[65fr_35fr]">
+   796→   796→            {/* LEFT 65% — active courtroom */}
+   797→   797→            <section className="panel sharp flex flex-col gap-4 p-4">
+   798→   798→              <TrialHeader room={room} scenario={scenario} myRole={myRole} />
+   799→   799→              <TurnTimerBar remaining={remaining} phase={room.phase} judging={judging} totalRounds={room.statementCount} currentRound={room.gameState.currentRound} />
+   800→   800→
+   801→   801→              {/* objection bar */}
+   802→   802→              {canObject && (
+   803→   803→                <button
+   804→   804→                  type="button"
+   805→   805→                  onClick={() => setObjectionOpen(true)}
+   806→   806→                  className="sharp flex items-center justify-between border border-red-500/50 bg-red-500/5 px-4 py-2.5 transition hover:bg-red-500/15"
+   807→   807→                >
+   808→   808→                  <span className="flex items-center gap-2 font-mono-terminal text-xs font-bold uppercase tracking-[0.2em] text-red-400">
+   809→   809→                    <Siren className="h-4 w-4" />
+   810→   810→                    Raise Objection
+   811→   811→                  </span>
+   812→   812→                  <span className="font-mono-terminal text-[10px] text-white/40">
+   813→   813→                    {myObjectionsLeft} left
+   814→   814→                  </span>
+   815→   815→                </button>
+   816→   816→              )}
+   817→   817→
+   818→   818→              <StatementTimeline statements={room.gameState.statements} myRole={myRole} />
+   819→   819→
+   820→   820→              {isMyTurn ? (
+   821→   821→                <ArgumentInput
+   822→   822→                  textareaRef={textareaRef}
+   823→   823→                  value={text}
+   824→   824→                  onChange={(v) => setText(v.slice(0, CHAR_LIMIT + 600))}
+   825→   825→                  onSubmit={() => handleSubmit(text)}
+   826→   826→                  disabled={judging}
+   827→   827→                  role={myRole}
+   828→   828→                  round={room.gameState.currentRound}
+   829→   829→                  totalRounds={room.statementCount}
+   830→   830→                  onSpeak={
+   831→   831→                    profile.character === "lawliet" || profile.isAdmin
+   832→   832→                      ? () => speakStatement(text)
+   833→   833→                      : undefined
+   834→   834→                  }
+   835→   835→                  ttsPlaying={ttsPlaying}
+   836→   836→                />
+   837→   837→              ) : (
+   838→   838→                <WaitingPanel
+   839→   839→                  room={room}
+   840→   840→                  myRole={myRole}
+   841→   841→                  currentTurnIsAI={currentTurnIsAI}
+   842→   842→                />
+   843→   843→              )}
+   844→   844→            </section>
+   845→   845→
+   846→   846→            {/* RIGHT 35% — evidence vault */}
+   847→   847→            <EvidenceVault
+   848→   848→              evidence={scenario.evidence}
+   849→   849→              canPresent={isMyTurn}
+   850→   850→              presentedIds={presentedAllIds(room.gameState.statements, presentedIds, room.phase)}
+   851→   851→              onPresent={presentEvidence}
+   852→   852→            />
+   853→   853→          </div>
+   854→   854→        )}
+   855→   855→      </main>
+   856→   856→
+   857→   857→      <footer className="mt-auto border-t border-white/10 bg-black px-4 py-3">
+   858→   858→        <div className="mx-auto flex max-w-[1600px] items-center justify-between font-mono-terminal text-[9px] uppercase tracking-[0.2em] text-white/25">
+   859→   859→          <span>Chamber {room.code} · {room.matchmakingType} · {room.statementCount} stmts/side</span>
+   860→   860→          <span>Chief Justice Vanguard presiding</span>
+   861→   861→        </div>
+   862→   862→      </footer>
+   863→   863→
+   864→   864→      <ObjectionModal
+   865→   865→        open={objectionOpen}
+   866→   866→        onOpenChange={setObjectionOpen}
+   867→   867→        remaining={myObjectionsLeft}
+   868→   868→        onSubmit={(grounds) => runObjection(myRole, profile.username, lastOpposingIdx, grounds, false)}
+   869→   869→      />
+   870→   870→    </div>
+   871→   871→  );
+   872→   872→}
+   873→   873→
+   874→   874→function emptyGs(): GameState {
+   875→   875→  return {
+   876→   876→    statements: [],
+   877→   877→    objectionsLeft: { prosecution: OBJECTIONS_PER_SIDE, defense: OBJECTIONS_PER_SIDE },
+   878→   878→    currentRound: 1,
+   879→   879→    turnTimerRemaining: TURN_DURATION,
+   880→   880→    turnStartedAt: null,
+   881→   881→    guiltyVotes: 0,
+   882→   882→    notGuiltyVotes: 0,
+   883→   883→    juryVotes: [],
+   884→   884→    verdict: null,
+   885→   885→    eloApplied: false,
+   886→   886→    pendingObjection: null,
+   887→   887→  };
+   888→   888→}
+   889→   889→
+   890→   890→function presentedAllIds(statements: Statement[], local: string[], phase: Room["phase"]): string[] {
+   891→   891→  const all = new Set<string>();
+   892→   892→  for (const s of statements) s.evidenceIds.forEach((id) => all.add(id));
+   893→   893→  if (phase === "prosecutor_turn" || phase === "defendant_turn") local.forEach((id) => all.add(id));
+   894→   894→  return Array.from(all);
+   895→   895→}
+   896→   896→
+   897→   897→function clamp(n: number, min: number, max: number) {
+   898→   898→  return Math.max(min, Math.min(max, n));
+   899→   899→}
+   900→   900→
+   901→   901→// ============ SUB COMPONENTS ============
+   902→   902→
+   903→   903→function CourtHeader({
+   904→   904→  room,
+   905→   905→  onLeave,
+   906→   906→  onShare,
+   907→   907→  judging,
+   908→   908→}: {
+   909→   909→  room: Room;
+   910→   910→  onLeave: () => void;
+   911→   911→  onShare: () => void;
+   912→   912→  judging: boolean;
+   913→   913→}) {
+   914→   914→  return (
+   915→   915→    <header className="sticky top-0 z-30 border-b border-white/10 bg-black/85 backdrop-blur">
+   916→   916→      <div className="mx-auto flex max-w-[1600px] items-center justify-between gap-3 px-3 py-2.5">
+   917→   917→        <div className="flex items-center gap-3">
+   918→   918→          <Button
+   919→   919→            onClick={onLeave}
+   920→   920→            variant="ghost"
+   921→   921→            size="sm"
+   922→   922→            className="sharp h-8 border border-white/15 px-2 text-white/60 hover:text-white"
+   923→   923→          >
+   924→   924→            <ArrowLeft className="h-3.5 w-3.5" />
+   925→   925→            <span className="font-mono-terminal text-[10px] uppercase tracking-widest">Exit</span>
+   926→   926→          </Button>
+   927→   927→          <div className="flex items-center gap-2 border-l border-white/10 pl-3">
+   928→   928→            <Gavel className="h-4 w-4 text-gold" />
+   929→   929→            <div>
+   930→   930→              <div className="font-mono-terminal text-xs font-bold uppercase tracking-[0.2em] text-white">
+   931→   931→                Chamber {room.code}
+   932→   932→              </div>
+   933→   933→              <div className="font-mono-terminal text-[8px] uppercase tracking-[0.25em] text-white/35">
+   934→   934→                {room.matchmakingType === "ranked" ? "Ranked · AI assist blocked" : "Casual"} · {room.statementCount}×{room.aiDifficulty}
+   935→   935→              </div>
+   936→   936→            </div>
+   937→   937→          </div>
+   938→   938→          {judging && (
+   939→   939→            <div className="flex items-center gap-1.5 border border-gold/40 bg-gold/5 px-2 py-1">
+   940→   940→              <Loader2 className="h-3 w-3 animate-spin text-gold" />
+   941→   941→              <span className="font-mono-terminal text-[9px] uppercase tracking-widest text-gold">
+   942→   942→                Vanguard deliberating...
+   943→   943→              </span>
+   944→   944→            </div>
+   945→   945→          )}
+   946→   946→        </div>
+   947→   947→        <Button
+   948→   948→          onClick={onShare}
+   949→   949→          variant="ghost"
+   950→   950→          size="sm"
+   951→   951→          className="sharp h-8 border border-gold/40 px-3 text-gold hover:bg-gold hover:text-black"
+   952→   952→        >
+   953→   953→          <Copy className="h-3.5 w-3.5" />
+   954→   954→          <span className="font-mono-terminal text-[10px] uppercase tracking-widest">Share</span>
+   955→   955→        </Button>
+   956→   956→      </div>
+   957→   957→    </header>
+   958→   958→  );
+   959→   959→}
+   960→   960→
+   961→   961→function PhaseTracker({
+   962→   962→  phase,
+   963→   963→  currentRound,
+   964→   964→  totalRounds,
+   965→   965→}: {
+   966→   966→  phase: Room["phase"];
+   967→   967→  currentRound: number;
+   968→   968→  totalRounds: number;
+   969→   969→}) {
+   970→   970→  const steps: { id: Room["phase"]; label: string }[] = [
+   971→   971→    { id: "lobby", label: "Lobby" },
+   972→   972→    { id: "case_intro", label: "Briefing" },
+   973→   973→    { id: "prosecutor_turn", label: "Arguments" },
+   974→   974→    { id: "jury_voting", label: "Jury" },
+   975→   975→    { id: "verdict", label: "Verdict" },
+   976→   976→  ];
+   977→   977→  const activeIdx = steps.findIndex((s) =>
+   978→   978→    phase === "defendant_turn" ? s.id === "prosecutor_turn" : s.id === phase,
+   979→   979→  );
+   980→   980→  return (
+   981→   981→    <div className="flex items-center gap-1 overflow-x-auto pb-1">
+   982→   982→      {steps.map((s, i) => {
+   983→   983→        const done = i < activeIdx;
+   984→   984→        const active = i === activeIdx;
+   985→   985→        return (
+   986→   986→          <div key={s.id} className="flex items-center gap-1">
+   987→   987→            <div
+   988→   988→              className={cn(
+   989→   989→                "sharp flex items-center gap-1.5 border px-2.5 py-1 font-mono-terminal text-[9px] uppercase tracking-widest transition",
+   990→   990→                active && "border-gold bg-gold/15 text-gold glow-gold",
+   991→   991→                done && "border-white/20 text-white/40",
+   992→   992→                !active && !done && "border-white/10 text-white/25",
+   993→   993→              )}
+   994→   994→            >
+   995→   995→              <span className="text-[8px]">{String(i + 1).padStart(2, "0")}</span>
+   996→   996→              {s.label}
+   997→   997→            </div>
+   998→   998→            {i < steps.length - 1 && (
+   999→   999→              <div className={cn("h-px w-4", done ? "bg-white/30" : "bg-white/10")} />
+  1000→  1000→            )}
+  1001→  1001→          </div>
+  1002→  1002→        );
+  1003→  1003→      })}
+  1004→  1004→      {(phase === "prosecutor_turn" || phase === "defendant_turn") && (
+  1005→  1005→        <div className="ml-2 sharp border border-gold/40 px-2 py-1 font-mono-terminal text-[9px] uppercase tracking-widest text-gold">
+  1006→  1006→          Round {currentRound}/{totalRounds}
+  1007→  1007→        </div>
+  1008→  1008→      )}
+  1009→  1009→    </div>
+  1010→  1010→  );
+  1011→  1011→}
+  1012→  1012→
+  1013→  1013→function TrialHeader({
+  1014→  1014→  room,
+  1015→  1015→  scenario,
+  1016→  1016→  myRole,
+  1017→  1017→}: {
+  1018→  1018→  room: Room;
+  1019→  1019→  scenario: CaseScenario;
+  1020→  1020→  myRole: string;
+  1021→  1021→}) {
+  1022→  1022→  return (
+  1023→  1023→    <div className="flex flex-col gap-3 border-b border-white/10 pb-3">
+  1024→  1024→      <div>
+  1025→  1025→        <div className="font-mono-terminal text-[9px] uppercase tracking-[0.25em] text-gold">
+  1026→  1026→          Case File
+  1027→  1027→        </div>
+  1028→  1028→        <h2 className="font-mono-terminal text-base font-bold text-white sm:text-lg">
+  1029→  1029→          {scenario.title}
+  1030→  1030→        </h2>
+  1031→  1031→        <p className="mt-1 font-mono-terminal text-[11px] leading-relaxed text-white/50">
+  1032→  1032→          {scenario.facts}
+  1033→  1033→        </p>
+  1034→  1034→      </div>
+  1035→  1035→      <div className="grid grid-cols-2 gap-3">
+  1036→  1036→        <CounselCard
+  1037→  1037→          role="prosecution"
+  1038→  1038→          name={room.prosecutorName ?? "—"}
+  1039→  1039→          isAI={room.prosecutorIsAI}
+  1040→  1040→          isMe={myRole === "prosecutor"}
+  1041→  1041→        />
+  1042→  1042→        <CounselCard
+  1043→  1043→          role="defense"
+  1044→  1044→          name={room.defendantName ?? "Awaiting..."}
+  1045→  1045→          isAI={room.defendantIsAI}
+  1046→  1046→          isMe={myRole === "defendant"}
+  1047→  1047→        />
+  1048→  1048→      </div>
+  1049→  1049→    </div>
+  1050→  1050→  );
+  1051→  1051→}
+  1052→  1052→
+  1053→  1053→function CounselCard({
+  1054→  1054→  role,
+  1055→  1055→  name,
+  1056→  1056→  isAI,
+  1057→  1057→  isMe,
+  1058→  1058→}: {
+  1059→  1059→  role: "prosecution" | "defense";
+  1060→  1060→  name: string;
+  1061→  1061→  isAI: boolean;
+  1062→  1062→  isMe: boolean;
+  1063→  1063→}) {
+  1064→  1064→  const isP = role === "prosecution";
+  1065→  1065→  return (
+  1066→  1066→    <div
+  1067→  1067→      className={cn(
+  1068→  1068→        "sharp flex items-center gap-3 border p-3",
+  1069→  1069→        isP ? "border-red-500/30 bg-red-500/5" : "border-emerald-500/30 bg-emerald-500/5",
+  1070→  1070→      )}
+  1071→  1071→    >
+  1072→  1072→      <div className="h-12 w-12 shrink-0 border border-white/15">
+  1073→  1073→        <Portrait
+  1074→  1074→          archetype={isAI ? "warden" : isP ? "inquisitor" : "advocate"}
+  1075→  1075→          accent={isP ? "crimson" : "jade"}
+  1076→  1076→          size={48}
+  1077→  1077→        />
+  1078→  1078→      </div>
+  1079→  1079→      <div className="min-w-0">
+  1080→  1080→        <div
+  1081→  1081→          className={cn(
+  1082→  1082→            "font-mono-terminal text-[9px] uppercase tracking-[0.2em]",
+  1083→  1083→            isP ? "text-red-400" : "text-emerald-400",
+  1084→  1084→          )}
+  1085→  1085→        >
+  1086→  1086→          {isP ? "Prosecution" : "Defense"}
+  1087→  1087→        </div>
+  1088→  1088→        <div className="truncate font-mono-terminal text-xs font-bold text-white">
+  1089→  1089→          {name}
+  1090→  1090→        </div>
+  1091→  1091→        <div className="flex items-center gap-1.5 font-mono-terminal text-[8px] uppercase tracking-widest text-white/35">
+  1092→  1092→          {isAI && (
+  1093→  1093→            <span className="flex items-center gap-0.5 text-gold">
+  1094→  1094→              <Cpu className="h-2.5 w-2.5" /> AI
+  1095→  1095→            </span>
+  1096→  1096→          )}
+  1097→  1097→          {isMe && <span className="text-gold">◂ YOU</span>}
+  1098→  1098→        </div>
+  1099→  1099→      </div>
+  1100→  1100→    </div>
+  1101→  1101→  );
+  1102→  1102→}
+  1103→  1103→
+  1104→  1104→function TurnTimerBar({
+  1105→  1105→  remaining,
+  1106→  1106→  phase,
+  1107→  1107→  judging,
+  1108→  1108→  totalRounds,
+  1109→  1109→  currentRound,
+  1110→  1110→}: {
+  1111→  1111→  remaining: number;
+  1112→  1112→  phase: Room["phase"];
+  1113→  1113→  judging: boolean;
+  1114→  1114→  totalRounds: number;
+  1115→  1115→  currentRound: number;
+  1116→  1116→}) {
+  1117→  1117→  const active = phase === "prosecutor_turn" || phase === "defendant_turn";
+  1118→  1118→  const pct = active ? (remaining / TURN_DURATION) * 100 : phase === "jury_voting" ? 100 : 0;
+  1119→  1119→  const danger = remaining <= 15;
+  1120→  1120→  return (
+  1121→  1121→    <div className="flex items-center gap-3">
+  1122→  1122→      <div className="flex items-center gap-1.5 font-mono-terminal text-[10px] uppercase tracking-widest text-white/40">
+  1123→  1123→        {phase === "jury_voting" ? (
+  1124→  1124→          <>
+  1125→  1125→            <Users className="h-3.5 w-3.5 text-gold animate-pulse" />
+  1126→  1126→            Jury deliberating
+  1127→  1127→          </>
+  1128→  1128→        ) : active ? (
+  1129→  1129→          <>
+  1130→  1130→            <span className={cn(danger && "text-red-400 animate-pulse")}>
+  1131→  1131→              R{currentRound}/{totalRounds}
+  1132→  1132→            </span>
+  1133→  1133→            <span>·</span>
+  1134→  1134→            <span className={cn(danger && "text-red-400")}>{remaining}s</span>
+  1135→  1135→          </>
+  1136→  1136→        ) : judging ? (
+  1137→  1137→          "Vanguard deliberating"
+  1138→  1138→        ) : (
+  1139→  1139→          "Idle"
+  1140→  1140→        )}
+  1141→  1141→      </div>
+  1142→  1142→      <div className="relative h-2 flex-1 border border-white/10 bg-white/5">
+  1143→  1143→        <div
+  1144→  1144→          className={cn(
+  1145→  1145→            "h-full transition-[width] duration-300",
+  1146→  1146→            phase === "jury_voting" || judging
+  1147→  1147→              ? "bg-gold animate-pulse"
+  1148→  1148→              : danger
+  1149→  1149→                ? "bg-red-500"
+  1150→  1150→                : "bg-gold",
+  1151→  1151→          )}
+  1152→  1152→          style={{ width: `${pct}%` }}
+  1153→  1153→        />
+  1154→  1154→      </div>
+  1155→  1155→    </div>
+  1156→  1156→  );
+  1157→  1157→}
+  1158→  1158→
+  1159→  1159→function StatementTimeline({
+  1160→  1160→  statements,
+  1161→  1161→  myRole,
+  1162→  1162→}: {
+  1163→  1163→  statements: Statement[];
+  1164→  1164→  myRole: string;
+  1165→  1165→}) {
+  1166→  1166→  if (statements.length === 0) {
+  1167→  1167→    return (
+  1168→  1168→      <div className="flex flex-col items-center justify-center gap-2 border border-dashed border-white/10 py-10 text-center">
+  1169→  1169→        <ScrollText className="h-6 w-6 text-white/20" />
+  1170→  1170→        <p className="font-mono-terminal text-[11px] text-white/30">
+  1171→  1171→          No statements filed yet. The prosecution opens.
+  1172→  1172→        </p>
+  1173→  1173→      </div>
+  1174→  1174→    );
+  1175→  1175→  }
+  1176→  1176→  return (
+  1177→  1177→    <div className="flex flex-col gap-3 max-h-[420px] overflow-y-auto pr-1">
+  1178→  1178→      {statements.map((s, i) => (
+  1179→  1179→        <StatementBlock key={s.id} statement={s} index={i} myRole={myRole} />
+  1180→  1180→      ))}
+  1181→  1181→    </div>
+  1182→  1182→  );
+  1183→  1183→}
+  1184→  1184→
+  1185→  1185→function StatementBlock({
+  1186→  1186→  statement,
+  1187→  1187→  index,
+  1188→  1188→  myRole,
+  1189→  1189→}: {
+  1190→  1190→  statement: Statement;
+  1191→  1191→  index: number;
+  1192→  1192→  myRole: string;
+  1193→  1193→}) {
+  1194→  1194→  const isP = statement.side === "prosecution";
+  1195→  1195→  const hasSustained = statement.objections.some((o) => o.ruling.ruling === "SUSTAINED");
+  1196→  1196→  return (
+  1197→  1197→    <div
+  1198→  1198→      className={cn(
+  1199→  1199→        "sharp border p-3",
+  1200→  1200→        isP ? "border-red-500/25 bg-red-500/[0.03]" : "border-emerald-500/25 bg-emerald-500/[0.03]",
+  1201→  1201→        hasSustained && "opacity-60",
+  1202→  1202→      )}
+  1203→  1203→    >
+  1204→  1204→      <div className="mb-1.5 flex items-center justify-between gap-2">
+  1205→  1205→        <span
+  1206→  1206→          className={cn(
+  1207→  1207→            "font-mono-terminal text-[9px] font-bold uppercase tracking-[0.2em]",
+  1208→  1208→            isP ? "text-red-400" : "text-emerald-400",
+  1209→  1209→          )}
+  1210→  1210→        >
+  1211→  1211→          {statement.side === "prosecution" ? "Prosecution" : "Defense"} — R{statement.round}
+  1212→  1212→          {statement.authorIsAI && (
+  1213→  1213→            <span className="ml-1.5 text-gold">[AI]</span>
+  1214→  1214→          )}
+  1215→  1215→          {statement.side === myRole && <span className="ml-1.5 text-gold">◂ YOU</span>}
+  1216→  1216→        </span>
+  1217→  1217→        {hasSustained && (
+  1218→  1218→          <span className="font-mono-terminal text-[8px] uppercase tracking-widest text-amber-400">
+  1219→  1219→            ◂ Struck
+  1220→  1220→          </span>
+  1221→  1221→        )}
+  1222→  1222→      </div>
+  1223→  1223→      <p className="whitespace-pre-wrap font-mono-terminal text-[12px] leading-relaxed text-white/75">
+  1224→  1224→        {statement.text}
+  1225→  1225→      </p>
+  1226→  1226→      {statement.evidenceIds.length > 0 && (
+  1227→  1227→        <div className="mt-2 flex flex-wrap gap-1">
+  1228→  1228→          {statement.evidenceIds.map((id) => (
+  1229→  1229→            <span
+  1230→  1230→              key={id}
+  1231→  1231→              className="sharp border border-gold/30 bg-gold/5 px-1.5 py-0.5 font-mono-terminal text-[8px] uppercase tracking-widest text-gold/70"
+  1232→  1232→            >
+  1233→  1233→              ◆ Exhibit
+  1234→  1234→            </span>
+  1235→  1235→          ))}
+  1236→  1236→        </div>
+  1237→  1237→      )}
+  1238→  1238→      {statement.objections.length > 0 && (
+  1239→  1239→        <div className="mt-2 flex flex-col gap-1.5">
+  1240→  1240→          {statement.objections.map((o) => (
+  1241→  1241→            <div
+  1242→  1242→              key={o.id}
+  1243→  1243→              className={cn(
+  1244→  1244→                "sharp border-l-2 px-2 py-1.5 font-mono-terminal text-[10px]",
+  1245→  1245→                o.ruling.ruling === "SUSTAINED"
+  1246→  1246→                  ? "border-emerald-500 bg-emerald-500/5"
+  1247→  1247→                  : "border-red-500/50 bg-red-500/5",
+  1248→  1248→              )}
+  1249→  1249→            >
+  1250→  1250→              <div className="flex items-center gap-1.5">
+  1251→  1251→                <Siren className="h-3 w-3 text-white/50" />
+  1252→  1252→                <span
+  1253→  1253→                  className={cn(
+  1254→  1254→                    "font-bold uppercase tracking-widest",
+  1255→  1255→                    o.ruling.ruling === "SUSTAINED" ? "text-emerald-400" : "text-red-400",
+  1256→  1256→                  )}
+  1257→  1257→                >
+  1258→  1258→                  {o.ruling.ruling}
+  1259→  1259→                </span>
+  1260→  1260→                <span className="text-white/30">— by {o.objectorName}</span>
+  1261→  1261→              </div>
+  1262→  1262→              <p className="mt-0.5 text-white/50">{o.ruling.reasoning}</p>
+  1263→  1263→            </div>
+  1264→  1264→          ))}
+  1265→  1265→        </div>
+  1266→  1266→      )}
+  1267→  1267→    </div>
+  1268→  1268→  );
+  1269→  1269→}
+  1270→  1270→
+  1271→  1271→function ArgumentInput({
+  1272→  1272→  textareaRef,
+  1273→  1273→  value,
+  1274→  1274→  onChange,
+  1275→  1275→  onSubmit,
+  1276→  1276→  disabled,
+  1277→  1277→  role,
+  1278→  1278→  round,
+  1279→  1279→  totalRounds,
+  1280→  1280→  onSpeak,
+  1281→  1281→  ttsPlaying,
+  1282→  1282→}: {
+  1283→  1283→  textareaRef: React.RefObject<HTMLTextAreaElement | null>;
+  1284→  1284→  value: string;
+  1285→  1285→  onChange: (v: string) => void;
+  1286→  1286→  onSubmit: () => void;
+  1287→  1287→  disabled: boolean;
+  1288→  1288→  role: string;
+  1289→  1289→  round: number;
+  1290→  1290→  totalRounds: number;
+  1291→  1291→  onSpeak?: () => void;
+  1292→  1292→  ttsPlaying: boolean;
+  1293→  1293→}) {
+  1294→  1294→  const overLimit = value.length > CHAR_LIMIT;
+  1295→  1295→  return (
+  1296→  1296→    <div className="flex flex-col gap-2 border-t border-white/10 pt-3">
+  1297→  1297→      <div className="flex items-center justify-between">
+  1298→  1298→        <span className="font-mono-terminal text-[10px] uppercase tracking-[0.2em] text-gold">
+  1299→  1299→          {role === "prosecutor" ? "Prosecution" : "Defense"} — Statement R{round}/{totalRounds}
+  1300→  1300→        </span>
+  1301→  1301→        <div className="flex items-center gap-3">
+  1302→  1302→          {onSpeak && (
+  1303→  1303→            <button
+  1304→  1304→              type="button"
+  1305→  1305→              onClick={onSpeak}
+  1306→  1306→              disabled={ttsPlaying || !value.trim()}
+  1307→  1307→              className="flex items-center gap-1 font-mono-terminal text-[10px] text-gold/70 transition hover:text-gold disabled:opacity-30"
+  1308→  1308→              title="Read aloud (Lawliet voice)"
+  1309→  1309→            >
+  1310→  1310→              {ttsPlaying ? <Loader2 className="h-3 w-3 animate-spin" /> : <Volume2 className="h-3 w-3" />}
+  1311→  1311→              Read
+  1312→  1312→            </button>
+  1313→  1313→          )}
+  1314→  1314→          <span
+  1315→  1315→            className={cn(
+  1316→  1316→              "font-mono-terminal text-[10px]",
+  1317→  1317→              overLimit ? "text-red-400" : value.length > CHAR_LIMIT * 0.85 ? "text-amber-400" : "text-white/40",
+  1318→  1318→            )}
+  1319→  1319→          >
+  1320→  1320→            {value.length}/{CHAR_LIMIT}
+  1321→  1321→          </span>
+  1322→  1322→        </div>
+  1323→  1323→      </div>
+  1324→  1324→      <Textarea
+  1325→  1325→        ref={textareaRef}
+  1326→  1326→        value={value}
+  1327→  1327→        onChange={(e) => onChange(e.target.value)}
+  1328→  1328→        placeholder="Compose your argument in plain English. Present evidence from the vault to strengthen your case..."
+  1329→  1329→        className="sharp min-h-[140px] resize-y border-white/20 bg-black font-mono-terminal text-[13px] leading-relaxed text-white placeholder:text-white/20 focus-visible:border-gold"
+  1330→  1330→      />
+  1331→  1331→      <div className="flex items-center justify-between gap-3">
+  1332→  1332→        <p className="font-mono-terminal text-[9px] text-white/30">
+  1333→  1333→          Auto-submits at 0s. Use [Present Evidence] to inject exhibits at your cursor.
+  1334→  1334→        </p>
+  1335→  1335→        <Button
+  1336→  1336→          onClick={onSubmit}
+  1337→  1337→          disabled={disabled}
+  1338→  1338→          className="sharp h-10 border border-gold bg-gold px-6 font-mono-terminal text-xs font-bold uppercase tracking-[0.25em] text-black hover:bg-gold/85"
+  1339→  1339→        >
+  1340→  1340→          <ScrollText className="h-4 w-4" />
+  1341→  1341→          File Statement
+  1342→  1342→        </Button>
+  1343→  1343→      </div>
+  1344→  1344→    </div>
+  1345→  1345→  );
+  1346→  1346→}
+  1347→  1347→
+  1348→  1348→function WaitingPanel({
+  1349→  1349→  room,
+  1350→  1350→  myRole,
+  1351→  1351→  currentTurnIsAI,
+  1352→  1352→}: {
+  1353→  1353→  room: Room;
+  1354→  1354→  myRole: string;
+  1355→  1355→  currentTurnIsAI: boolean;
+  1356→  1356→}) {
+  1357→  1357→  const activeRole =
+  1358→  1358→    room.phase === "prosecutor_turn" ? "Prosecution" : room.phase === "defendant_turn" ? "Defense" : "";
+  1359→  1359→  return (
+  1360→  1360→    <div className="flex flex-col items-center justify-center gap-3 border-t border-white/10 py-10 text-center">
+  1361→  1361→      {room.phase === "jury_voting" ? (
+  1362→  1362→        <>
+  1363→  1363→          <Users className="h-8 w-8 animate-pulse text-gold" />
+  1364→  1364→          <p className="font-mono-terminal text-sm text-white/60">
+  1365→  1365→            The jury of five is deliberating...
+  1366→  1366→          </p>
+  1367→  1367→        </>
+  1368→  1368→      ) : (
+  1369→  1369→        <>
+  1370→  1370→          <div className="h-2 w-2 animate-blink bg-gold" />
+  1371→  1371→          <p className="font-mono-terminal text-sm text-white/60">
+  1372→  1372→            {currentTurnIsAI
+  1373→  1373→              ? `${activeRole} AI counsel is preparing (R${room.gameState.currentRound})...`
+  1374→  1374→              : `Awaiting ${activeRole}'s statement (R${room.gameState.currentRound})...`}
+  1375→  1375→          </p>
+  1376→  1376→          <p className="font-mono-terminal text-[10px] uppercase tracking-widest text-white/30">
+  1377→  1377→            {myRole === "spectator" ? "Spectator mode" : "Your turn is next — prepare your objection"}
+  1378→  1378→          </p>
+  1379→  1379→        </>
+  1380→  1380→      )}
+  1381→  1381→    </div>
+  1382→  1382→  );
+  1383→  1383→}
+  1384→  1384→
+  1385→  1385→// ============ LOBBY (v2: role selection) ============
+  1386→  1386→function LobbyView({
+  1387→  1387→  room,
+  1388→  1388→  scenario,
+  1389→  1389→  isHost,
+  1390→  1390→  myRole,
+  1391→  1391→  onToggleAI,
+  1392→  1392→  onTakeRole,
+  1393→  1393→  onCycleScenario,
+  1394→  1394→  onGenerateCase,
+  1395→  1395→  genLoading,
+  1396→  1396→  onStart,
+  1397→  1397→  onShare,
+  1398→  1398→}: {
+  1399→  1399→  room: Room;
+  1400→  1400→  scenario: CaseScenario;
+  1401→  1401→  isHost: boolean;
+  1402→  1402→  myRole: string;
+  1403→  1403→  onToggleAI: (role: "prosecution" | "defense") => void;
+  1404→  1404→  onTakeRole: (role: "prosecution" | "defense") => void;
+  1405→  1405→  onCycleScenario: () => void;
+  1406→  1406→  onGenerateCase: () => void;
+  1407→  1407→  genLoading: boolean;
+  1408→  1408→  onStart: () => void;
+  1409→  1409→  onShare: () => void;
+  1410→  1410→}) {
+  1411→  1411→  const ready = (!!room.prosecutorId || room.prosecutorIsAI) && (!!room.defendantId || room.defendantIsAI);
+  1412→  1412→  return (
+  1413→  1413→    <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[65fr_35fr]">
+  1414→  1414→      <section className="panel sharp flex flex-col gap-5 p-5">
+  1415→  1415→        <div className="border-b border-white/10 pb-3">
+  1416→  1416→          <div className="font-mono-terminal text-[9px] uppercase tracking-[0.25em] text-gold">
+  1417→  1417→            Pre-Trial Lobby
+  1418→  1418→          </div>
+  1419→  1419→          <h2 className="font-mono-terminal text-lg font-bold text-white">{scenario.title}</h2>
+  1420→  1420→          <p className="mt-1 font-mono-terminal text-[11px] leading-relaxed text-white/50">
+  1421→  1421→            {scenario.facts}
+  1422→  1422→          </p>
+  1423→  1423→          <div className="mt-2 flex flex-wrap gap-2 font-mono-terminal text-[9px] uppercase tracking-widest text-white/40">
+  1424→  1424→            <span className="sharp border border-white/15 px-2 py-0.5">{room.statementCount} statements/side</span>
+  1425→  1425→            <span className="sharp border border-white/15 px-2 py-0.5">AI: {room.aiDifficulty}</span>
+  1426→  1426→            {room.caseTheme && (
+  1427→  1427→              <span className="sharp border border-gold/30 px-2 py-0.5 text-gold">theme: {room.caseTheme}</span>
+  1428→  1428→            )}
+  1429→  1429→          </div>
+  1430→  1430→        </div>
+  1431→  1431→
+  1432→  1432→        {/* role selection */}
+  1433→  1433→        <div className="grid grid-cols-2 gap-3">
+  1434→  1434→          <RoleSlot
+  1435→  1435→            role="prosecution"
+  1436→  1436→            name={room.prosecutorName}
+  1437→  1437→            isAI={room.prosecutorIsAI}
+  1438→  1438→            isMe={myRole === "prosecution"}
+  1439→  1439→            isHost={isHost}
+  1440→  1440→            onTake={() => onTakeRole("prosecution")}
+  1441→  1441→            onToggleAI={() => onToggleAI("prosecution")}
+  1442→  1442→          />
+  1443→  1443→          <RoleSlot
+  1444→  1444→            role="defense"
+  1445→  1445→            name={room.defendantName}
+  1446→  1446→            isAI={room.defendantIsAI}
+  1447→  1447→            isMe={myRole === "defendant"}
+  1448→  1448→            isHost={isHost}
+  1449→  1449→            onTake={() => onTakeRole("defense")}
+  1450→  1450→            onToggleAI={() => onToggleAI("defense")}
+  1451→  1451→          />
+  1452→  1452→        </div>
+  1453→  1453→
+  1454→  1454→        {isHost ? (
+  1455→  1455→          <div className="flex flex-col gap-3 border-t border-white/10 pt-4">
+  1456→  1456→            <div className="flex flex-wrap items-center gap-2">
+  1457→  1457→              <Button
+  1458→  1458→                onClick={onCycleScenario}
+  1459→  1459→                variant="ghost"
+  1460→  1460→                size="sm"
+  1461→  1461→                className="sharp h-9 border border-white/20 text-white/70 hover:text-white"
+  1462→  1462→              >
+  1463→  1463→                <RefreshCw className="h-3.5 w-3.5" />
+  1464→  1464→                Preset Case
+  1465→  1465→              </Button>
+  1466→  1466→              <Button
+  1467→  1467→                onClick={onGenerateCase}
+  1468→  1468→                disabled={genLoading}
+  1469→  1469→                variant="ghost"
+  1470→  1470→                size="sm"
+  1471→  1471→                className="sharp h-9 border border-gold/40 text-gold hover:bg-gold hover:text-black"
+  1472→  1472→              >
+  1473→  1473→                {genLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+  1474→  1474→                Generate AI Case
+  1475→  1475→              </Button>
+  1476→  1476→            </div>
+  1477→  1477→            <Button
+  1478→  1478→              onClick={onStart}
+  1479→  1479→              disabled={!ready}
+  1480→  1480→              className="sharp h-12 border border-gold bg-gold font-mono-terminal text-sm font-bold uppercase tracking-[0.3em] text-black hover:bg-gold/85 disabled:opacity-30"
+  1481→  1481→            >
+  1482→  1482→              <Play className="h-5 w-5" />
+  1483→  1483→              Convene Trial
+  1484→  1484→            </Button>
+  1485→  1485→            {!ready && (
+  1486→  1486→              <p className="text-center font-mono-terminal text-[10px] text-white/30">
+  1487→  1487→                A slot is empty — take the role or fill with AI.
+  1488→  1488→              </p>
+  1489→  1489→            )}
+  1490→  1490→          </div>
+  1491→  1491→        ) : (
+  1492→  1492→          <div className="flex flex-col items-center gap-3 border-t border-white/10 pt-6">
+  1493→  1493→            <div className="h-2 w-2 animate-blink bg-gold" />
+  1494→  1494→            <p className="font-mono-terminal text-sm text-white/60">
+  1495→  1495→              Waiting for the host to convene the trial...
+  1496→  1496→            </p>
+  1497→  1497→            <p className="font-mono-terminal text-[10px] uppercase tracking-widest text-white/30">
+  1498→  1498→              Chamber code: {room.code}
+  1499→  1499→            </p>
+  1500→  1500→          </div>
+  1501→  1501→        )}
+  1502→  1502→      </section>
+  1503→  1503→
+  1504→  1504→      <EvidenceVault
+  1505→  1505→        evidence={scenario.evidence}
+  1506→  1506→        canPresent={false}
+  1507→  1507→        presentedIds={[]}
+  1508→  1508→        onPresent={() => {}}
+  1509→  1509→      />
+  1510→  1510→    </div>
+  1511→  1511→  );
+  1512→  1512→}
+  1513→  1513→
+  1514→  1514→function RoleSlot({
+  1515→  1515→  role,
+  1516→  1516→  name,
+  1517→  1517→  isAI,
+  1518→  1518→  isMe,
+  1519→  1519→  isHost,
+  1520→  1520→  onTake,
+  1521→  1521→  onToggleAI,
+  1522→  1522→}: {
+  1523→  1523→  role: "prosecution" | "defense";
+  1524→  1524→  name: string | null;
+  1525→  1525→  isAI: boolean;
+  1526→  1526→  isMe: boolean;
+  1527→  1527→  isHost: boolean;
+  1528→  1528→  onTake: () => void;
+  1529→  1529→  onToggleAI: () => void;
+  1530→  1530→}) {
+  1531→  1531→  const isP = role === "prosecution";
+  1532→  1532→  return (
+  1533→  1533→    <div
+  1534→  1534→      className={cn(
+  1535→  1535→        "sharp flex flex-col gap-2 border p-3",
+  1536→  1536→        isP ? "border-red-500/30 bg-red-500/5" : "border-emerald-500/30 bg-emerald-500/5",
+  1537→  1537→      )}
+  1538→  1538→    >
+  1539→  1539→      <div className="flex items-center justify-between">
+  1540→  1540→        <span
+  1541→  1541→          className={cn(
+  1542→  1542→            "font-mono-terminal text-[9px] font-bold uppercase tracking-[0.2em]",
+  1543→  1543→            isP ? "text-red-400" : "text-emerald-400",
+  1544→  1544→          )}
+  1545→  1545→        >
+  1546→  1546→          {isP ? "Prosecution" : "Defense"}
+  1547→  1547→        </span>
+  1548→  1548→        {isAI && (
+  1549→  1549→          <span className="flex items-center gap-0.5 font-mono-terminal text-[8px] uppercase tracking-widest text-gold">
+  1550→  1550→            <Cpu className="h-2.5 w-2.5" /> AI
+  1551→  1551→          </span>
+  1552→  1552→        )}
+  1553→  1553→      </div>
+  1554→  1554→      <div className="font-mono-terminal text-xs font-bold text-white">
+  1555→  1555→        {name ?? "Empty slot"}
+  1556→  1556→        {isMe && <span className="ml-1.5 text-gold">◂ YOU</span>}
+  1557→  1557→      </div>
+  1558→  1558→      {isHost && (
+  1559→  1559→        <div className="mt-1 flex gap-1.5">
+  1560→  1560→          <Button
+  1561→  1561→            size="sm"
+  1562→  1562→            variant="ghost"
+  1563→  1563→            onClick={onTake}
+  1564→  1564→            disabled={isMe}
+  1565→  1565→            className="sharp h-7 flex-1 border border-white/20 px-2 text-[9px] uppercase tracking-widest text-white/70 hover:text-white disabled:opacity-30"
+  1566→  1566→          >
+  1567→  1567→            Take Role
+  1568→  1568→          </Button>
+  1569→  1569→          <Button
+  1570→  1570→            size="sm"
+  1571→  1571→            variant="ghost"
+  1572→  1572→            onClick={onToggleAI}
+  1573→  1573→            className={cn(
+  1574→  1574→              "sharp h-7 border px-2 text-[9px] uppercase tracking-widest",
+  1575→  1575→              isAI
+  1576→  1576→                ? "border-gold bg-gold/10 text-gold"
+  1577→  1577→                : "border-white/20 text-white/50 hover:text-white",
+  1578→  1578→            )}
+  1579→  1579→          >
+  1580→  1580→            {isAI ? "AI On" : "Fill AI"}
+  1581→  1581→          </Button>
+  1582→  1582→        </div>
+  1583→  1583→      )}
+  1584→  1584→    </div>
+  1585→  1585→  );
+  1586→  1586→}
+  1587→  1587→
+  1588→  1588→// ============ VERDICT ============
+  1589→  1589→function VerdictView({
+  1590→  1590→  room,
+  1591→  1591→  scenario,
+  1592→  1592→  myRole,
+  1593→  1593→  onLeave,
+  1594→  1594→  onRematch,
+  1595→  1595→}: {
+  1596→  1596→  room: Room;
+  1597→  1597→  scenario: CaseScenario;
+  1598→  1598→  myRole: string;
+  1599→  1599→  onLeave: () => void;
+  1600→  1600→  onRematch: () => void;
+  1601→  1601→}) {
+  1602→  1602→  const v = room.gameState.verdict!;
+  1603→  1603→  const guilty = v.verdict === "GUILTY";
+  1604→  1604→  const iWon =
+  1605→  1605→    (myRole === "prosecutor" && guilty) || (myRole === "defendant" && !guilty);
+  1606→  1606→  const isSpectator = myRole === "spectator";
+  1607→  1607→
+  1608→  1608→  return (
+  1609→  1609→    <div className="mt-4 mx-auto w-full max-w-3xl">
+  1610→  1610→      <div
+  1611→  1611→        className={cn(
+  1612→  1612→          "panel sharp glow-gold flex flex-col items-center gap-4 p-8 text-center",
+  1613→  1613→          guilty ? "border-red-500/50" : "border-emerald-500/50",
+  1614→  1614→        )}
+  1615→  1615→      >
+  1616→  1616→        <div className="font-mono-terminal text-[10px] uppercase tracking-[0.4em] text-white/40">
+  1617→  1617→          Chief Justice Vanguard renders decree
+  1618→  1618→        </div>
+  1619→  1619→        <div
+  1620→  1620→          className={cn(
+  1621→  1621→            "text-glow-gold font-mono-terminal text-4xl font-black uppercase tracking-[0.2em] sm:text-6xl",
+  1622→  1622→            guilty ? "text-red-400" : "text-emerald-400",
+  1623→  1623→          )}
+  1624→  1624→          style={!guilty ? { color: "#3fb98a", textShadow: "0 0 20px rgba(63,185,138,0.5)" } : {}}
+  1625→  1625→        >
+  1626→  1626→          {v.verdict}
+  1627→  1627→        </div>
+  1628→  1628→
+  1629→  1629→        {!isSpectator && (
+  1630→  1630→          <div
+  1631→  1631→            className={cn(
+  1632→  1632→              "sharp border px-4 py-1.5 font-mono-terminal text-xs font-bold uppercase tracking-[0.25em]",
+  1633→  1633→              iWon
+  1634→  1634→                ? "border-gold bg-gold/10 text-gold"
+  1635→  1635→                : "border-white/30 text-white/50",
+  1636→  1636→            )}
+  1637→  1637→          >
+  1638→  1638→            {iWon ? "▲ Verdict in your favor" : "▼ Verdict against you"}
+  1639→  1639→          </div>
+  1640→  1640→        )}
+  1641→  1641→
+  1642→  1642→        <div className="flex items-center gap-6 font-mono-terminal text-[10px] uppercase tracking-widest text-white/40">
+  1643→  1643→          <span>
+  1644→  1644→            Jury:{" "}
+  1645→  1645→            <span className="text-red-400">{room.gameState.guiltyVotes}</span> /{" "}
+  1646→  1646→            <span className="text-emerald-400">{room.gameState.notGuiltyVotes}</span>
+  1647→  1647→          </span>
+  1648→  1648→          <span>
+  1649→  1649→            Decisiveness: <span className="text-gold">{v.decisiveness}/100</span>
+  1650→  1650→          </span>
+  1651→  1651→        </div>
+  1652→  1652→      </div>
+  1653→  1653→
+  1654→  1654→      <div className="panel sharp mt-4 flex flex-col gap-4 p-5">
+  1655→  1655→        <VerdictSection label="Legal Reasoning" icon={ScrollText}>
+  1656→  1656→          {v.reasoning}
+  1657→  1657→        </VerdictSection>
+  1658→  1658→        <VerdictSection label="Punishment Decree" icon={Gavel}>
+  1659→  1659→          {v.punishment}
+  1660→  1660→        </VerdictSection>
+  1661→  1661→      </div>
+  1662→  1662→
+  1663→  1663→      <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:justify-center">
+  1664→  1664→        <Button
+  1665→  1665→          onClick={onRematch}
+  1666→  1666→          className="sharp h-11 border border-gold bg-gold px-8 font-mono-terminal text-xs font-bold uppercase tracking-[0.25em] text-black hover:bg-gold/85"
+  1667→  1667→        >
+  1668→  1668→          <RefreshCw className="h-4 w-4" />
+  1669→  1669→          New Trial
+  1670→  1670→        </Button>
+  1671→  1671→        <Button
+  1672→  1672→          onClick={onLeave}
+  1673→  1673→          variant="ghost"
+  1674→  1674→          className="sharp h-11 border border-white/20 px-8 font-mono-terminal text-xs font-bold uppercase tracking-[0.25em] text-white/70 hover:text-white"
+  1675→  1675→        >
+  1676→  1676→          Return to Terminal
+  1677→  1677→        </Button>
+  1678→  1678→      </div>
+  1679→  1679→    </div>
+  1680→  1680→  );
+  1681→  1681→}
+  1682→  1682→
+  1683→  1683→function VerdictSection({
+  1684→  1684→  label,
+  1685→  1685→  icon: Icon,
+  1686→  1686→  children,
+  1687→  1687→}: {
+  1688→  1688→  label: string;
+  1689→  1689→  icon: React.ComponentType<{ className?: string }>;
+  1690→  1690→  children: React.ReactNode;
+  1691→  1691→}) {
+  1692→  1692→  return (
+  1693→  1693→    <div className="border-l-2 border-gold/40 pl-4">
+  1694→  1694→      <div className="mb-1.5 flex items-center gap-2">
+  1695→  1695→        <Icon className="h-3.5 w-3.5 text-gold" />
+  1696→  1696→        <span className="font-mono-terminal text-[10px] font-bold uppercase tracking-[0.25em] text-gold">
+  1697→  1697→          {label}
+  1698→  1698→        </span>
+  1699→  1699→      </div>
+  1700→  1700→      <p className="whitespace-pre-wrap font-mono-terminal text-[12px] leading-relaxed text-white/70">
+  1701→  1701→        {children}
+  1702→  1702→      </p>
+  1703→  1703→    </div>
+  1704→  1704→  );
+  1705→  1705→}
+  1706→  1706→

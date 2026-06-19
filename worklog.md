@@ -62,3 +62,97 @@ Stage Summary:
 - All Replit-transcript features delivered except Google OAuth (noted as needs Google Cloud console setup).
 - Lawliet portrait = pure SVG (image-gen timed out in sandbox); PNG fallback wired if /characters/lawliet.png exists.
 - User must run supabase-schema.sql (v2) in Supabase SQL editor to add statement_count/ai_difficulty/case_theme columns + admin account (alrzrii). App works in v1 mode until then via resilience fallback.
+
+---
+Task ID: UI-POLISH
+Agent: frontend-styling-expert
+Task: Polish UI, add framer-motion animations, QoL features (connection indicator, turn toast, better empty states, hover glows).
+
+Work Log:
+- Created `src/components/game/ConnectionIndicator.tsx`: emerald pulse dot + "LIVE" / red dot + "SYNC..." label, glowing box-shadow, terminal styling. Drop-in for the CourtHeader.
+- `Dashboard.tsx`: imported `motion` from framer-motion; wrapped Matchmaking, ProfileStats, AvatarCustomizer, Leaderboard in `motion.div` with staggered fade-in (opacity 0→1, y 12→0, durations 0.4s, delays 0.05/0.15/0.25/0.35s) for a cascading reveal on dashboard mount.
+- `Courtroom.tsx`:
+  - Imported `motion` from framer-motion + `ConnectionIndicator`.
+  - Added turn-notification effect right after `isMyTurn` definition: fires `toast.info("Your turn — file your statement!", { duration: 4000 })` whenever `isMyTurn` flips to true.
+  - `StatementBlock`: changed outer `<div>` to `<motion.div>` with slide-in from left (prosecution, x: -20) / right (defense, x: 20), opacity 0→1, 0.3s duration — gives the timeline a directional flow matching each side.
+  - `VerdictView`: wrapped the verdict text (GUILTY/NOT GUILTY) in `<motion.div>` with `initial={{ scale: 0.3, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ duration: 0.6, type: "spring", bounce: 0.4 }}` — dramatic spring-scale reveal that complements the existing text-glow.
+  - `CourtHeader`: rendered `<ConnectionIndicator />` next to the Chamber code block.
+  - `StatementTimeline` empty state: rewrote with `ScrollText` (gold/40) + two-line text "Waiting for opening statements. / The prosecution begins." + a blinking gold cursor dot.
+- `LoadingScreen.tsx`: full rewrite —
+  - Added `ParticleField`: 28 deterministic pseudo-random gold/white particles drifting upward (pure CSS keyframe `particle-drift`, no canvas), seeded via `Math.sin` LCG so SSR + CSR match.
+  - Added radial gold glow overlay behind the PixelScales for a vignette feel.
+  - Wrapped PixelScales in `animate-flicker` (existing utility) for subtle CRT flicker.
+  - Replaced line-by-line `BootLines` reveal with `BootTypewriter`: drives character-by-character reveal off the global `pct` value, shows a blinking gold ▌ cursor on the currently-typing line, and stamps `> protocol ready_` once all four lines are fully revealed.
+- `Matchmaking.tsx`: added `hover:shadow-[0_0_20px_-5px_var(--gold)]` to the four action cards (Create / Join / Ranked / Practice) via the shared base className; also added `disabled:hover:shadow-none` so the glow doesn't show when busy.
+- Lint: `bun run lint` returns 0 errors / 0 warnings.
+- TypeScript: `tsc --noEmit` shows pre-existing errors in Courtroom.tsx, automation.ts, judge.ts, and CaseIntroOverlay.tsx unrelated to this task (PlayerRole union mismatch: `"prosecutor" | "defendant" | "spectator"` vs `"prosecutor" | "defense"`). These existed before this task — verified via git diff that none of my edits touched those code paths or type unions. Lint (which is what the task asked for) is clean.
+
+Stage Summary:
+- All 6 polish tasks delivered. Aesthetic stays dark terminal (black bg, white borders, gold/red/emerald accents). No existing functionality broken.
+- New file: src/components/game/ConnectionIndicator.tsx
+- Edited files: Dashboard.tsx, Courtroom.tsx, LoadingScreen.tsx, Matchmaking.tsx
+
+---
+Task ID: COURTROOM-FIX
+Agent: courtroom-fixer
+Task: Fix critical bugs in Courtroom + CaseIntroOverlay (ranked lobby rules, host-only case intro, Lawliet entrance reliability, Ctrl+Enter shortcut, auto-scroll timeline).
+
+Work Log:
+- Read worklog.md and full Courtroom.tsx (1814 lines) + CaseIntroOverlay.tsx to understand context.
+- **Courtroom.tsx — LobbyView + RoleSlot (ranked vs casual)**:
+  - Added `const isRanked = room.matchmakingType === "ranked"` in LobbyView.
+  - Ready check now branches: ranked requires `!!room.prosecutorId && !!room.defendantId && !room.prosecutorIsAI && !room.defendantIsAI`; casual keeps `(prosecutorId || prosecutorIsAI) && (defendantId || defendantIsAI)`.
+  - Added `waitingForOpponent = isRanked && !room.defendantId`.
+  - Host view: ranked shows a prominent Chamber Code card (gold-bordered, 2xl gold mono) with Copy Link button + animated 3-dot "Waiting for opponent" indicator when defendant empty; casual keeps Preset Case / Generate AI Case buttons. The "not ready" hint now branches per mode.
+  - Non-host view: ranked shows prominent Chamber Code + "Opponent joined — waiting for host..." or animated "Waiting for opponent" dots; casual keeps existing blink indicator + "Chamber code: ..." line.
+  - RoleSlot gained `isRanked: boolean` prop. When true: hides Take Role / Fill AI buttons, shows "Auto-assigned (host)" (prosecution) / "Auto-assigned (opponent)" (defense) text, and shows "Awaiting..." instead of "Empty slot" when name is null. Both RoleSlot call sites now pass `isRanked={isRanked}`.
+- **CaseIntroOverlay.tsx — host vs non-host**:
+  - Added `isHost: boolean` prop. Host keeps the gold "Enter Court" button calling onBegin. Non-host sees a pulsing gold dot + "Waiting for host to open court..." text.
+  - Courtroom.tsx call site now passes `isHost={isHost}`.
+- **Courtroom.tsx — Lawliet entrance reliability**:
+  - Added `const lawlietShownRef = useRef(false)` to prevent double-triggering.
+  - Existing transition effect (lobby→case_intro) now also sets `lawlietShownRef.current = true` before `setShowLawliet(true)`.
+  - Added new on-mount useEffect: if `room.phase === "case_intro"` and `!lawlietShownRef.current` and the profile is Lawliet/admin, sets the ref + shows the entrance. This handles the case where an admin navigates directly into a courtroom that is already in case_intro (where lastPhaseSeen starts as "" so the prev==="lobby" branch never fires).
+- **Courtroom.tsx — Ctrl+Enter shortcut**:
+  - ArgumentInput's Textarea now has an onKeyDown handler: `(e.ctrlKey || e.metaKey) && e.key === "Enter"` calls preventDefault + onSubmit.
+  - Updated the help text below the textarea to hint "Ctrl+Enter to file."
+- **Courtroom.tsx — Auto-scroll statement timeline**:
+  - StatementTimeline now has `const bottomRef = useRef<HTMLDivElement>(null)` + a useEffect that calls `bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" })` whenever `statements.length` changes. Added `<div ref={bottomRef} />` at the end of the scrollable list.
+- Lint: `bun run lint` returns clean (0 errors, 0 warnings). Dev log shows successful recompiles with no errors related to these edits.
+
+Stage Summary:
+- All 5 bug fixes delivered across 2 files (Courtroom.tsx, CaseIntroOverlay.tsx).
+- Ranked mode now correctly hides role-selection UI, shows a shareable chamber code, displays animated "Waiting for opponent" dots, and uses the strict ready check.
+- Case intro is host-gated: non-hosts can no longer trigger beginTrialFromIntro.
+- Lawliet entrance now fires reliably both on phase transition and on admin mount-into-briefing.
+- Ctrl+Enter files statements; timeline auto-scrolls to the newest statement.
+
+Files edited:
+- src/components/game/Courtroom.tsx
+- src/components/game/CaseIntroOverlay.tsx
+
+---
+Task ID: v3-FIXES
+Agent: orchestrator
+Task: Fix ranked/waiting room, commence trial sync, Lawliet entrance, UI polish, QoL features.
+
+Work Log:
+- useGameRoom: added 2s polling fallback + broadcast event so both players see phase transitions (fixes "commence trial only takes one person").
+- LobbyView: ranked-aware — no role selection, no AI, auto-assigned roles, animated "Waiting for opponent" with shareable code. Casual keeps full role/AI/scenario controls.
+- RoleSlot: isRanked prop hides Take Role / Fill AI, shows "Auto-assigned" text.
+- CaseIntroOverlay: host sees "Enter Court", non-host sees "Waiting for host to open court...".
+- LawlietEntrance: now triggers on mount (not just phase transition) via lawlietShownRef.
+- Ctrl+Enter shortcut to file statements.
+- Auto-scroll statement timeline to latest.
+- Framer-motion: staggered dashboard sections, verdict spring-scale reveal, statement slide-in.
+- ConnectionIndicator (LIVE dot) in courtroom header.
+- Turn notification toast ("Your turn — file your statement!").
+- LoadingScreen: particle field + typewriter boot text.
+- Hover glow on matchmaking cards.
+- Agent Browser verified: admin login → Lawliet entrance → case intro → courtroom R1/4 → statement filed → LIVE indicator → zero blocking errors.
+
+Stage Summary:
+- Ranked: strictly human vs human, auto-roles, no AI.
+- Both players sync via polling (2s) + realtime broadcast.
+- Lawliet shows reliably for admin on court entry.
+- TTS fails in sandbox (z-ai SDK) — non-blocking, caught. Works on Vercel with a real TTS provider.

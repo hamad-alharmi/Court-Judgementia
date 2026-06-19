@@ -1,5 +1,6 @@
 "use client";
 // ===== Phase 3: Main Terminal Dashboard =====
+import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { PixelScales } from "./PixelScales";
 import { ProfileStats } from "./ProfileStats";
@@ -9,6 +10,17 @@ import { Matchmaking } from "./Matchmaking";
 import { useAuth } from "@/hooks/use-auth";
 import { tierInfoForElo } from "@/lib/data/ranks";
 import { LogOut, Scale } from "lucide-react";
+
+// Shared staggered fade-in variants for dashboard sections
+const sectionVariants = {
+  hidden: { opacity: 0, y: 12 },
+  visible: { opacity: 1, y: 0 },
+};
+const sectionTransition = (delay: number) => ({
+  duration: 0.4,
+  delay,
+  ease: "easeOut" as const,
+});
 
 export function Dashboard({ onEnterRoom }: { onEnterRoom: (id: string) => void }) {
   const { profile, logout } = useAuth();
@@ -65,19 +77,45 @@ export function Dashboard({ onEnterRoom }: { onEnterRoom: (id: string) => void }
       {/* ===== MAIN ===== */}
       <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6">
         {/* Matchmaking first (primary entry vector) */}
-        <div className="mb-6">
+        <motion.div
+          className="mb-6"
+          variants={sectionVariants}
+          initial="hidden"
+          animate="visible"
+          transition={sectionTransition(0.05)}
+        >
           <Matchmaking onEnterRoom={onEnterRoom} />
-        </div>
+        </motion.div>
 
         {/* Stats + Avatar | Leaderboard */}
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
           <div className="flex flex-col gap-6 lg:col-span-5">
-            <ProfileStats />
-            <AvatarCustomizer />
+            <motion.div
+              variants={sectionVariants}
+              initial="hidden"
+              animate="visible"
+              transition={sectionTransition(0.15)}
+            >
+              <ProfileStats />
+            </motion.div>
+            <motion.div
+              variants={sectionVariants}
+              initial="hidden"
+              animate="visible"
+              transition={sectionTransition(0.25)}
+            >
+              <AvatarCustomizer />
+            </motion.div>
           </div>
-          <div className="lg:col-span-7">
+          <motion.div
+            className="lg:col-span-7"
+            variants={sectionVariants}
+            initial="hidden"
+            animate="visible"
+            transition={sectionTransition(0.35)}
+          >
             <Leaderboard />
-          </div>
+          </motion.div>
         </div>
       </main>
 

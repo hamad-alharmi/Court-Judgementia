@@ -16,10 +16,12 @@ export function CaseIntroOverlay({
   scenario,
   statementCount,
   onBegin,
+  isHost,
 }: {
   scenario: CaseScenario;
   statementCount: number;
   onBegin: () => void;
+  isHost: boolean;
 }) {
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center overflow-y-auto bg-black/90 p-4 backdrop-blur-sm">
@@ -89,17 +91,24 @@ export function CaseIntroOverlay({
           </div>
         </div>
 
-        <div className="mt-5 flex items-center justify-between border-t border-white/10 pt-4">
+        <div className="mt-5 flex items-center justify-between gap-3 border-t border-white/10 pt-4">
           <div className="font-mono-terminal text-[10px] uppercase tracking-widest text-white/40">
             Trial format: {statementCount} statement{statementCount > 1 ? "s" : ""} per side
           </div>
-          <Button
-            onClick={onBegin}
-            className="sharp h-11 border border-gold bg-gold px-6 font-mono-terminal text-xs font-bold uppercase tracking-[0.25em] text-black hover:bg-gold/85"
-          >
-            Enter Court
-            <ArrowRight className="h-4 w-4" />
-          </Button>
+          {isHost ? (
+            <Button
+              onClick={onBegin}
+              className="sharp h-11 border border-gold bg-gold px-6 font-mono-terminal text-xs font-bold uppercase tracking-[0.25em] text-black hover:bg-gold/85"
+            >
+              Enter Court
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+          ) : (
+            <div className="flex items-center gap-2 font-mono-terminal text-xs uppercase tracking-[0.2em] text-white/60">
+              <span className="h-2 w-2 animate-pulse rounded-full bg-gold" />
+              Waiting for host to open court...
+            </div>
+          )}
         </div>
       </div>
     </div>
