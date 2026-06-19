@@ -442,12 +442,15 @@ export const rooms = {
   },
 
   async listRecentLobbies(): Promise<Room[]> {
+    const staleMs = 30 * 60 * 1000; // 30 minutes
+    const cutoff = new Date(Date.now() - staleMs).toISOString();
     if (DATA_MODE === "supabase" && supabase) {
       const { data, error } = await supabase
         .from("rooms")
         .select("*")
         .eq("phase", "lobby")
         .eq("closed", false)
+        .gt("created_at", cutoff)
         .order("created_at", { ascending: false })
         .limit(20);
       if (error) throw error;
@@ -455,7 +458,7 @@ export const rooms = {
     }
     return local
       .listLocalRooms()
-      .filter((r) => r.phase === "lobby" && !r.closed)
+      .filter((r) => r.phase === "lobby" && !r.closed && r.createdAt > cutoff)
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   },
 };

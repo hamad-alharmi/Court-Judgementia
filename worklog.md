@@ -156,3 +156,113 @@ Stage Summary:
 - Both players sync via polling (2s) + realtime broadcast.
 - Lawliet shows reliably for admin on court entry.
 - TTS fails in sandbox (z-ai SDK) — non-blocking, caught. Works on Vercel with a real TTS provider.
+
+---
+Task ID: UI-OVERHAUL
+Agent: frontend-styling-expert
+Task: Major UI polish + better animations across the entire app — make it look like a premium AAA game UI.
+
+Work Log:
+- Read worklog.md + globals.css + all 6 target components to understand existing design tokens and structure.
+- **src/app/globals.css** (global foundation):
+  - Added 7 new keyframe animations: `shimmer`, `glow-pulse`, `red-pulse`, `scan-x`, `float-soft`, `rise-glow`, `pop-in`, `barber-pole`.
+  - Added utility classes: `.animate-shimmer`, `.animate-glow-pulse`, `.animate-red-pulse`, `.animate-scan-x`, `.animate-float-soft`, `.animate-pop-in`, `.animate-barber-pole`.
+  - Added reusable `.premium-card` (layered gradient panel + top hairline gold gradient + border-glow on hover via `.premium-card-hover:hover`).
+  - Added `.header-gradient-bar` for animated gold→transparent gradient underline on headers/footers.
+  - Added `.hud-corners` (gold corner brackets on TL+BR) for HUD-style framing on profile chip, stat cards, counsel cards, role slots.
+  - Added `.fade-mask-b` for vertical fade-out mask on scrollable lists (evidence vault, leaderboard).
+  - Improved scrollbar: gradient track (#050505→#0a0a0a), gradient thumb (#2a2a2a→#1a1a1a), gold hover with glow, plus `scrollbar-width: thin` for Firefox.
+- **src/components/game/Dashboard.tsx**:
+  - Header now uses `header-gradient-bar` for animated gold underline.
+  - Added a moving gold scan-line accent (`animate-scan-x`) at the top of the header.
+  - Logo: wrapped in `animate-float-soft` + radial gold blur halo behind PixelScales.
+  - Title gets a TerminalSquare icon + version suffix ("v2.4"); subtitle tracking bumped to 0.4em.
+  - Premium HUD profile chip: `hud-corners` brackets + gradient gold bg + glow-gold text + Scale icon + bold Elo number + "Elo" label.
+  - Sign-out button hover now turns red-bordered.
+  - Added ambient scanline overlay (fixed, radial-masked) behind main content for CRT terminal feel.
+  - Footer uses `header-gradient-bar` + blinking gold dot before "Chief Justice Vanguard presiding".
+  - Section stagger durations bumped (0.4s→0.5s) and gaps tightened (6→7) for better rhythm.
+- **src/components/game/Matchmaking.tsx**:
+  - Section uses `premium-card` instead of `panel`.
+  - Section header rebuilt inline with `TerminalSquare` icon + "04" index + "Matchmaking Core" title — premium framing.
+  - 4 action cards fully redesigned as premium game menu buttons:
+    - Taller (148px) with icon-in-bordered-tile + tone tag badge + title + desc + hover arrow accent.
+    - Each tone (gold/white/crimson) gets matching gradient background, border-glow on hover, and -translate-y-0.5 lift.
+    - `motion.button` with staggered fade-in-up entrance (0.05s + i*0.06s).
+    - "Connecting" overlay replaces the old "..." with a blinking gold dot + label.
+  - Join code entry completely redesigned as a dramatic centered terminal:
+    - `premium-card` with gold-tinted gradient bg + moving `animate-scan-x` accent line.
+    - KeyRound icon + uppercase "Enter Chamber Code" label + helper subtitle.
+    - Input is now h-14, text-3xl/4xl, centered, with `border-2` + gold focus glow shadow.
+    - Button is gold-filled h-14 with hover glow; disabled when code < 4 chars.
+    - "▸ Press ENTER to file" hint below.
+  - Open Chambers lobbies: redesigned as grid cards (1/2/3 cols) with gold/black-glow-glow hover + ArrowRight slide-in on hover + tone-coded border (gold for casual, red for ranked) + RANKED/CASUAL badges.
+- **src/components/game/Courtroom.tsx** (largest overhaul):
+  - Imports: added `ArrowRight`, `Flame`, `Scale`, `ShieldAlert`, `LucideIcon` type.
+  - Loading state: redesigned as a centered gavel icon (floating + gold halo) + "Convening chamber" text + 3-dot blinking loader.
+  - `CourtHeader`: `header-gradient-bar` underline, gold-glow halo behind Gavel icon, "Chamber CODE" with `text-glow-gold`, judging indicator now uses `animate-glow-pulse`, Share button has hover glow + icon scale.
+  - `PhaseTracker`: each step now has an icon (Users/ScrollText/Scale/Users/Gavel) + numbered prefix; active step uses `animate-glow-pulse`; connectors are 6px wide with `animate-shimmer` overlay when done; round badge gets `text-glow-gold`.
+  - `TrialHeader`: Case File label gets blinking gold dot + scenario.id; case title bumped to text-lg/2xl with "v." prefix in muted gold + `text-glow-gold` on the title.
+  - `CounselCard`: `hud-corners` brackets, gradient bg (red/emerald → transparent), bigger portrait (56px) with active-indicator gold pulse dot when isMe, role badge with ShieldAlert/Scale icon, "AI Counsel" + "◂ YOU" badges with proper borders + bgs, glow shadow on isMe.
+  - `TurnTimerBar`: completely redesigned — taller (h-3.5), gold→amber→red gradient fill that shifts based on remaining time, inner `animate-shimmer` white-streak overlay, 9 tick marks across the bar, Flame icon when in danger zone, header row shows "TURN TIMER" / "DELIBERATION" label, pulsing red text when ≤15s.
+  - Objection bar: `animate-red-pulse` for continuous red glow, pulsing Siren icon, "Counter opposing counsel" subtitle on sm+, hover ArrowRight slide.
+  - `StatementTimeline` empty state: radial gold backdrop + floating ScrollText icon + 3-dot blinking loader.
+  - `StatementBlock`: redesigned with left border-accent (red/emerald), top-left corner bracket, gradient bg, R-badge + AI/YOU badges, gold-bordered Exhibit badges (numbered ◆ Exhibit 01/02), bordered objections with stronger bg, motion entrance upgraded (x: ±24 + scale 0.98).
+  - `ArgumentInput`: redesigned as a premium terminal — header row with role hex-icon (⬢ Prosecution/Defense) + gold "Statement R/N" + tabular-nums char counter; prominent h-1 progress bar that shifts gold→amber→red; textarea gets role-tinted border + colored focus glow; File Statement button now role-tinted (red for prosecution, emerald for defense) with hover glow + icon scale.
+  - `WaitingPanel`: jury deliberation now shows animated `animate-barber-pole` bar; waiting state shows 3-dot blinking loader; gold glow on text.
+  - `LobbyView`: section uses `premium-card`; Pre-Trial Lobby label gets blinking dot; case title bumped to text-xl/2xl with `text-glow-gold`; tags get tone-coded borders (gold for theme). Convene Trial button: gold hover glow + `animate-pulse-gold` when ready + icon scale on hover.
+  - `RoleSlot`: `hud-corners` brackets, gradient bg, role icon (ShieldAlert/Scale), "AI" badge with gold border/bg, isMe shadow glow.
+  - Footer: `header-gradient-bar` + blinking gold dot.
+  - `VerdictView` — completely redesigned for drama:
+    - `premium-card` container with role-tinted box-shadow (red for guilty, emerald for not guilty).
+    - Radial accent glow background + top `animate-scan-x` line in the accent color.
+    - Staggered motion entrance: header text (delay 0.1s) → verdict text (delay 0.2s, spring scale + blur removal, 5xl/7xl with double text-shadow glow in accent color) → case title (delay 0.5s) → win/loss badge (delay 0.7s) → jury/decisiveness stats (delay 0.9s) → reasoning panel (delay 1s) → action buttons (delay 1.3s).
+    - Reasoning panel uses `premium-card` with icon tiles for each section (ScrollText + Gavel) + gradient divider between sections.
+- **src/components/game/EvidenceVault.tsx**:
+  - Full rewrite: `premium-card` shell + FolderLock icon + exhibit-count badge with border.
+  - Evidence cards redesigned as premium file folders: 3px colored left-border (red/emerald/gold), gradient bg, hover sheen sweep (translate-x from -100% to 100% via gradient), icon-in-tile (colored bg matching side), title hover-turns-gold, ChevronDown rotates + turns gold when open.
+  - Expand/collapse via `motion.div` with `AnimatePresence` (height + opacity animation) — smooth open/close.
+  - Side tag (PROSECUTION/DEFENSE/AMBIGUOUS) is now a colored badge with dot + colored bg + colored border (more prominent).
+  - "Presented" indicator: gold dot with `animate-pulse-gold`.
+  - "Present Evidence" button: gradient gold border, hover lifts bg to solid gold with `shadow-[0_0_24px_-4px_var(--gold)]` + icon scale; "Re-Present" variant is more subdued.
+  - "Awaiting your turn" footer: 2 blinking white dots framing the text.
+  - Scroll list uses `fade-mask-b` for graceful bottom fade.
+- **src/components/game/Leaderboard.tsx**:
+  - Full rewrite: `premium-card` shell.
+  - Top 3 redesigned with medal styling: square medal tile (28px) with metallic color (gold/silver/bronze) + matching glow shadow + `animate-pop-in` entrance (scale 0.4→1.12→1).
+  - Rank #1 gets Crown icon, #2 Medal icon, #3 Award icon (lucide-react).
+  - User's own row: `animate-glow-pulse` continuous gold glow + "YOU" badge with gold border.
+  - Rank tier badges with color coding: CJ=gold, MG=purple, SC=emerald, PT=blue, JA=gray — each as a bordered pill with colored dot.
+  - Tier legend row at the bottom showing all 5 tier codes with their colors.
+  - Empty state: Crown icon + 2-line text.
+  - Loading skeletons slightly taller (h-10).
+  - Rows use `motion.div` with staggered fade-in-left entrance (delay capped at 0.4s).
+  - Scroll list uses `fade-mask-b`.
+- **src/components/game/ProfileStats.tsx**:
+  - Full rewrite: `premium-card` shell.
+  - Stat cards redesigned as premium HUD tiles: `hud-corners` brackets, gradient bg (gold-tinted for accent stats, white-tinted for others), icon-in-header (Scale/Gavel/Target/ShieldCheck/Trophy/Percent), `motion.div` staggered entrance, large black tabular-nums value with `text-glow-gold` for accent stats.
+  - Rank progress: `hud-corners` + gold gradient bg, taller bar (h-3) with shimmer overlay + 9 tick marks, blinking gold dot label, "★ APEX TIER REACHED ★" with text-glow-gold when at top tier, tier ladder shown as "JA → PT → SC → MG → CJ".
+  - Judge favorability meter: completely redesigned — `hud-corners` shell, Gavel icon header, fav tier label (REVERED/ESTEEMED/NEUTRAL/DISAPPROVED/REVILED) color-coded, large favorability number with color-matched text-shadow, taller bar (h-3) with gradient fill matching tier color, shimmer overlay, 3 threshold tick marks (33%/66% boundaries), bottom legend "0 — Reviled / 50 — Neutral / 100 — Revered".
+- Lint: `bun run lint` returns 0 errors / 0 warnings.
+- Dev server: clean compile, GET / returns HTTP 200, no errors/warnings in dev log.
+- TypeScript: `tsc --noEmit` shows the same pre-existing PlayerRole union mismatch errors noted in the UI-POLISH worklog (Courtroom.tsx, automation.ts, judge.ts, CaseIntroOverlay.tsx) — none of these are from my edits; they're the existing `"prosecutor" | "defendant" | "spectator"` vs `"prosecutor" | "defense"` type drift. Lint (the task's required check) is clean.
+
+Stage Summary:
+- Comprehensive visual upgrade across 7 files (globals.css + 6 components). Aesthetic stays strictly dark terminal (pure black bg, dark-gray panels, white borders, gold/red/emerald accents, monospace font, sharp corners — no border-radius introduced).
+- Premium feel achieved via: layered gradient backgrounds, HUD corner brackets, animated scan lines, shimmer sweeps, glow-pulse on active elements, color-shifting timer bar, dramatic staggered verdict reveal, medal styling for top 3, color-coded rank tier badges, smooth expand/collapse on evidence cards, premium-card reusable utility.
+- All animations use either framer-motion (entrance/reveal) or pure CSS keyframes (ambient/shimmer/glow) — no new dependencies added.
+- Files edited: src/app/globals.css, src/components/game/Dashboard.tsx, src/components/game/Matchmaking.tsx, src/components/game/Courtroom.tsx, src/components/game/EvidenceVault.tsx, src/components/game/Leaderboard.tsx, src/components/game/ProfileStats.tsx.
+
+---
+Task ID: v4-FINAL
+Agent: orchestrator
+Task: Fix hydration error, clean up finished rooms, UI overhaul, GitHub instructions.
+
+Work Log:
+- Fixed hydration mismatch: ParticleField now mounts client-only (mounted state) + rounded all float values to avoid SSR/CSR precision differences.
+- Fixed finished rooms in Open Chambers: rooms now set closed=true on verdict; listRecentLobbies filters out rooms older than 30 min.
+- UI overhaul (via subagent): premium card styling, HUD corner brackets, animated phase tracker, gradient timer bar, dramatic verdict reveal, medal leaderboard, premium stat tiles, evidence folder cards, shimmer/glow animations.
+- Agent Browser verified: zero hydration errors, dashboard loads clean, zero console errors.
+
+Stage Summary:
+- All reported bugs fixed. UI significantly upgraded. Ready for GitHub push + Vercel deploy.

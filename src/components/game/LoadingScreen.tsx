@@ -12,6 +12,14 @@ const BOOT_LINES = [
 
 export function LoadingScreen({ onComplete }: { onComplete: () => void }) {
   const [pct, setPct] = useState(0);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    // mount the particle field on the client only (avoids hydration mismatch
+    // from floating-point precision differences in the seeded PRNG)
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     const start = Date.now();
@@ -30,7 +38,7 @@ export function LoadingScreen({ onComplete }: { onComplete: () => void }) {
   return (
     <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-black scanlines">
       <div className="absolute inset-0 grid-bg opacity-40" />
-      <ParticleField />
+      {mounted && <ParticleField />}
       {/* radial gold glow */}
       <div
         className="pointer-events-none absolute inset-0 opacity-60"
@@ -135,13 +143,13 @@ function ParticleField() {
           return x - Math.floor(x);
         };
         return {
-          left: r(1) * 100,
-          top: r(2) * 100,
-          size: 1 + r(3) * 1.5,
-          delay: r(4) * 6,
-          duration: 6 + r(5) * 8,
+          left: Math.round(r(1) * 1000) / 10,
+          top: Math.round(r(2) * 1000) / 10,
+          size: Math.round((1 + r(3) * 1.5) * 100) / 100,
+          delay: Math.round(r(4) * 600) / 100,
+          duration: Math.round((6 + r(5) * 8) * 100) / 100,
           gold: r(6) > 0.65,
-          opacity: 0.15 + r(7) * 0.35,
+          opacity: Math.round((0.15 + r(7) * 0.35) * 1000) / 1000,
         };
       }),
     [],
