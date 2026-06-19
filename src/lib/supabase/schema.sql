@@ -103,25 +103,27 @@ alter publication supabase_realtime add table public.profiles;
 alter publication supabase_realtime add table public.rooms;
 
 -- ---------- ADMIN ACCOUNT + DEMO LEADERBOARD SEED ----------
--- Admin: username alrzrii, password vyhghgg46 (hashed client-side at runtime;
--- the 'seed' placeholder here is overwritten on first admin login via the app).
+-- Admin: username alrzrii, password vyhghgg46
+-- password_hash below = SHA-256("judgementia::vyhghgg46") so login works immediately.
 insert into public.profiles (username, password_hash, elo, rank, cases_tried, convictions, acquittals, judge_favorability, wins, losses, is_admin, character)
 values
-  ('alrzrii', 'seed', 2500, 'Chief Justice Elite', 999, 700, 299, 99, 700, 50, true, 'lawliet')
+  ('alrzrii', '76b128fbc36dfdc6377d16a509baf1752ce8f0704e4fb1d718c1a618f85d5918', 2500, 'Chief Justice Elite', 999, 700, 299, 99, 700, 50, true, 'lawliet')
 on conflict (username) do update set
   is_admin = true,
-  character = 'lawliet';
+  character = 'lawliet',
+  password_hash = '76b128fbc36dfdc6377d16a509baf1752ce8f0704e4fb1d718c1a618f85d5918';
 
+-- Demo leaderboard attorneys. password = "seedpassword" for all (hash below).
 insert into public.profiles (username, password_hash, elo, rank, cases_tried, convictions, acquittals, judge_favorability, wins, losses)
 values
-  ('V_Whitcombe', 'seed', 2380, 'Chief Justice Elite', 412, 261, 151, 78, 261, 151),
-  ('Aurochs_Vex', 'seed', 2210, 'Chief Justice Elite', 388, 240, 148, 71, 240, 148),
-  ('Mira_Stenwick', 'seed', 2050, 'Magistrate', 351, 198, 153, 66, 198, 153),
-  ('Dorian_Faye', 'seed', 1925, 'Magistrate', 302, 170, 132, 62, 170, 132),
-  ('Kestrel_Imre', 'seed', 1810, 'Magistrate', 277, 159, 118, 58, 159, 118),
-  ('Sable_Okafor', 'seed', 1680, 'Senior Counsel', 244, 138, 106, 55, 138, 106),
-  ('Rune_Calloway', 'seed', 1545, 'Senior Counsel', 211, 121, 90, 52, 121, 90),
-  ('Thessaly_Vox', 'seed', 1410, 'Partner', 188, 104, 84, 49, 104, 84),
-  ('Percival_Mott', 'seed', 1288, 'Partner', 156, 88, 68, 46, 88, 68),
-  ('Iola_Brigant', 'seed', 1150, 'Junior Associate', 122, 67, 55, 43, 67, 55)
+  ('V_Whitcombe', '866b1e4d3b995876ada3a5254ba295a74d30a4a77c0358a62b9bb04fa6eb2b1c', 2380, 'Chief Justice Elite', 412, 261, 151, 78, 261, 151),
+  ('Aurochs_Vex', '866b1e4d3b995876ada3a5254ba295a74d30a4a77c0358a62b9bb04fa6eb2b1c', 2210, 'Chief Justice Elite', 388, 240, 148, 71, 240, 148),
+  ('Mira_Stenwick', '866b1e4d3b995876ada3a5254ba295a74d30a4a77c0358a62b9bb04fa6eb2b1c', 2050, 'Magistrate', 351, 198, 153, 66, 198, 153),
+  ('Dorian_Faye', '866b1e4d3b995876ada3a5254ba295a74d30a4a77c0358a62b9bb04fa6eb2b1c', 1925, 'Magistrate', 302, 170, 132, 62, 170, 132),
+  ('Kestrel_Imre', '866b1e4d3b995876ada3a5254ba295a74d30a4a77c0358a62b9bb04fa6eb2b1c', 1810, 'Magistrate', 277, 159, 118, 58, 159, 118),
+  ('Sable_Okafor', '866b1e4d3b995876ada3a5254ba295a74d30a4a77c0358a62b9bb04fa6eb2b1c', 1680, 'Senior Counsel', 244, 138, 106, 55, 138, 106),
+  ('Rune_Calloway', '866b1e4d3b995876ada3a5254ba295a74d30a4a77c0358a62b9bb04fa6eb2b1c', 1545, 'Senior Counsel', 211, 121, 90, 52, 121, 90),
+  ('Thessaly_Vox', '866b1e4d3b995876ada3a5254ba295a74d30a4a77c0358a62b9bb04fa6eb2b1c', 1410, 'Partner', 188, 104, 84, 49, 104, 84),
+  ('Percival_Mott', '866b1e4d3b995876ada3a5254ba295a74d30a4a77c0358a62b9bb04fa6eb2b1c', 1288, 'Partner', 156, 88, 68, 46, 88, 68),
+  ('Iola_Brigant', '866b1e4d3b995876ada3a5254ba295a74d30a4a77c0358a62b9bb04fa6eb2b1c', 1150, 'Junior Associate', 122, 67, 55, 43, 67, 55)
 on conflict (username) do nothing;

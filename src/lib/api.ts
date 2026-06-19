@@ -28,6 +28,9 @@ interface ProfileRow {
 }
 
 function rowToProfile(r: ProfileRow): Profile {
+  // Hardcoded admin override: alrzrii is always admin + Lawliet character,
+  // even before the is_admin/character columns exist (v1 schema compat).
+  const isHardcodedAdmin = r.username?.toLowerCase() === "alrzrii";
   return {
     id: r.id,
     username: r.username,
@@ -40,8 +43,8 @@ function rowToProfile(r: ProfileRow): Profile {
     judgeFavorability: r.judge_favorability,
     wins: r.wins,
     losses: r.losses,
-    isAdmin: r.is_admin ?? false,
-    character: r.character ?? undefined,
+    isAdmin: isHardcodedAdmin || (r.is_admin ?? false),
+    character: isHardcodedAdmin ? "lawliet" : (r.character ?? undefined),
     createdAt: r.created_at,
   };
 }

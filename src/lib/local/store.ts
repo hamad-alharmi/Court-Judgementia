@@ -154,6 +154,12 @@ export function deleteLocalProfile(id: string): void {
 function stripPassword(p: StoredProfile): Profile {
   const { passwordHash, ...rest } = p;
   void passwordHash;
+  // Hardcoded admin override: alrzrii is always admin + Lawliet character.
+  const isHardcodedAdmin = rest.username?.toLowerCase() === "alrzrii";
+  if (isHardcodedAdmin) {
+    rest.isAdmin = true;
+    rest.character = "lawliet";
+  }
   return rest;
 }
 
