@@ -266,3 +266,20 @@ Work Log:
 
 Stage Summary:
 - All reported bugs fixed. UI significantly upgraded. Ready for GitHub push + Vercel deploy.
+
+---
+Task ID: v5-LAWLIET-ASSETS
+Agent: orchestrator
+Task: Wire in user-uploaded Lawliet image + voice sound.
+
+Work Log:
+- Copied uploaded image (pasted_image_1781898744810.png, 250x181) to public/characters/lawliet.png.
+- Copied uploaded MP3 (im-l-made-with-Voicemod.mp3) to public/characters/lawliet-voice.mp3.
+- LawlietEntrance: now plays the MP3 automatically on entrance; image displays with object-contain, dramatic border + glow + scanline overlay + radial vignette.
+- Replaced /api/tts (z-ai SDK, failed in sandbox) with local MP3 playback: the "Voice" button in the courtroom now plays the Lawliet sound bite. Zero console errors.
+- Statement filing also triggers the sound for admin.
+- Agent Browser verified: admin login → practice match → Lawliet entrance (image visible, sound plays) → courtroom → Voice button works → statement filed → zero errors.
+
+Stage Summary:
+- Lawliet uses the uploaded image + sound. No more TTS API failures.
+- Both files serve at /characters/lawliet.png and /characters/lawliet-voice.mp3 (HTTP 200).

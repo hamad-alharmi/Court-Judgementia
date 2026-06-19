@@ -620,25 +620,16 @@ export function Courtroom({
     toast.success(`Exhibit "${e.title}" injected at cursor.`);
   }
 
-  // ===== TTS (Lawliet reads his own statement) =====
-  async function speakStatement(statementText: string) {
-    if (!statementText.trim()) return;
+  // ===== Lawliet voice — plays the character's sound bite =====
+  function speakStatement(_statementText: string) {
     setTtsPlaying(true);
     try {
-      const res = await fetch("/api/tts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: statementText.slice(0, 1000) }),
-      });
-      if (!res.ok) throw new Error("tts-failed");
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const audio = new Audio(url);
-      audio.onended = () => URL.revokeObjectURL(url);
-      await audio.play();
-    } catch (e) {
-      console.error("TTS failed", e);
-    } finally {
+      const audio = new Audio("/characters/lawliet-voice.mp3");
+      audio.volume = 0.8;
+      audio.onended = () => setTtsPlaying(false);
+      audio.onerror = () => setTtsPlaying(false);
+      audio.play().catch(() => setTtsPlaying(false));
+    } catch {
       setTtsPlaying(false);
     }
   }
@@ -1532,10 +1523,10 @@ function ArgumentInput({
               onClick={onSpeak}
               disabled={ttsPlaying || !value.trim()}
               className="flex items-center gap-1 font-mono-terminal text-[10px] text-gold/70 transition hover:text-gold disabled:opacity-30"
-              title="Read aloud (Lawliet voice)"
+              title="Play Lawliet voice"
             >
               {ttsPlaying ? <Loader2 className="h-3 w-3 animate-spin" /> : <Volume2 className="h-3 w-3" />}
-              Read
+              Voice
             </button>
           )}
           <span
