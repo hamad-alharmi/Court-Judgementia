@@ -1,4 +1,4 @@
-// ===== Judgementia — Core Type System =====
+// ===== Judgementia — Core Type System (v2: multi-round + objections + setup) =====
 
 export type RankTier =
   | "Junior Associate"
@@ -11,6 +11,7 @@ export type MatchmakingType = "casual" | "ranked";
 
 export type RoomPhase =
   | "lobby"
+  | "case_intro"
   | "prosecutor_turn"
   | "defendant_turn"
   | "jury_voting"
@@ -19,6 +20,12 @@ export type RoomPhase =
 export type PlayerRole = "prosecutor" | "defendant" | "spectator";
 
 export type EvidenceSide = "prosecution" | "defense" | "ambiguous";
+
+export type AIDifficulty = "easy" | "medium" | "hard";
+
+export type AIRole = "prosecution" | "defense";
+
+export type UITheme = "gold" | "crimson" | "jade" | "violet" | "cyan";
 
 export interface EvidenceItem {
   id: string;
@@ -33,30 +40,16 @@ export interface CaseScenario {
   title: string;
   facts: string;
   evidence: EvidenceItem[];
+  /** custom theme tag (e.g. "cyber", "murder", "joke") — empty for presets */
+  theme?: string;
+  /** true when AI-generated on the spot */
+  generated?: boolean;
 }
 
 export interface AvatarConfig {
-  /** silhouette archetype id */
   archetype: string;
-  /** primary accent color token */
   accent: string;
-  /** legal motto shown under avatar */
   motto: string;
-}
-
-export interface Profile {
-  id: string;
-  username: string;
-  avatar: AvatarConfig;
-  elo: number;
-  rank: RankTier;
-  casesTried: number;
-  convictions: number;
-  acquittals: number;
-  judgeFavorability: number; // 0-100
-  wins: number;
-  losses: number;
-  createdAt: string;
 }
 
 export interface JudgeVerdict {
@@ -67,6 +60,36 @@ export interface JudgeVerdict {
   decisiveness: number;
 }
 
+export interface ObjectionRuling {
+  ruling: "SUSTAINED" | "OVERRULED";
+  reasoning: string;
+}
+
+export interface Objection {
+  id: string;
+  objectorId: string;
+  objectorName: string;
+  objectorSide: PlayerRole;
+  /** which statement this objection targets (index into statements[]) */
+  targetIndex: number;
+  grounds: string;
+  ruling: ObjectionRuling;
+  at: number;
+}
+
+export interface Statement {
+  id: string;
+  round: number; // 1-indexed
+  side: PlayerRole;
+  text: string;
+  evidenceIds: string[];
+  /** live draft sync (only for the in-progress current statement) */
+  draft?: string;
+  objections: Objection[];
+  at: number;
+  authorIsAI?: boolean;
+}
+
 export interface JuryVote {
   voterId: string;
   voterName: string;
@@ -74,22 +97,22 @@ export interface JuryVote {
 }
 
 export interface GameState {
-  prosecutorText: string;
-  prosecutorEvidence: string[]; // injected evidence exhibit ids
-  defendantText: string;
-  defendantEvidence: string[];
-  /** live-typing drafts (synced, debounced) */
-  prosecutorDraft: string;
-  defendantDraft: string;
+  /** chronological list of all filed statements (across all rounds) */
+  statements: Statement[];
+  /** remaining objections per side: { prosecution: n, defense: n } */
+  objectionsLeft: { prosecution: number; defense: number };
+  /** current round (1-indexed). increments after both sides have spoken. */
+  currentRound: number;
   turnTimerRemaining: number; // seconds
+  turnStartedAt: number | null;
   guiltyVotes: number;
   notGuiltyVotes: number;
   juryVotes: JuryVote[];
   verdict: JudgeVerdict | null;
-  /** epoch ms when current turn started */
-  turnStartedAt: number | null;
   /** guards against double Elo application across clients */
   eloApplied?: boolean;
+  /** active objection being evaluated (transient) */
+  pendingObjection?: Objection | null;
 }
 
 export interface Room {
@@ -105,10 +128,32 @@ export interface Room {
   defendantName: string | null;
   prosecutorIsAI: boolean;
   defendantIsAI: boolean;
+  /** room setup config */
+  statementCount: number; // per side
+  aiDifficulty: AIDifficulty;
+  caseTheme: string; // free-text theme for AI case generation
   gameState: GameState;
   createdAt: string;
-  /** ranked queue ready flag */
   closed?: boolean;
+}
+
+export interface Profile {
+  id: string;
+  username: string;
+  avatar: AvatarConfig;
+  elo: number;
+  rank: RankTier;
+  casesTried: number;
+  convictions: number;
+  acquittals: number;
+  judgeFavorability: number; // 0-100
+  wins: number;
+  losses: number;
+  /** admin flag — grants admin panel + Lawliet character */
+  isAdmin?: boolean;
+  /** equipped character theme (admin can equip "lawliet") */
+  character?: string;
+  createdAt: string;
 }
 
 export type AppPhase =
@@ -121,3 +166,20 @@ export type AppPhase =
 export const TURN_DURATION = 90; // seconds
 export const CHAR_LIMIT = 1000;
 export const JURY_SIZE = 5;
+export const DEFAULT_STATEMENTS = 4; // ranked default per side
+export const OBJECTIONS_PER_SIDE = 2;
+export const RANKED_STATEMENT_COUNT = 4;
+
+export const STATEMENT_OPTIONS = [1, 2, 3, 4, 6, 8] as const;
+export const AI_DIFFICULTIES: AIDifficulty[] = ["easy", "medium", "hard"];
+
+export const CASE_THEME_PRESETS = [
+  "cyber",
+  "corporate fraud",
+  "murder mystery",
+  "heist",
+  "supply chain",
+  "joke",
+  "cold case",
+  "conspiracy",
+] as const;

@@ -1,27 +1,48 @@
-// ===== /api/judge — Chief Justice Vanguard verdict + Elo resolution =====
+// ===== /api/judge — Chief Justice Vanguard: verdicts + objection rulings =====
 import { NextRequest, NextResponse } from "next/server";
 import {
-  buildJudgeUserPrompt,
+  buildObjectionUserPrompt,
+  buildVerdictUserPrompt,
   heuristicVerdict,
   JUDGE_SYSTEM_PROMPT,
+  OBJECTION_SYSTEM_PROMPT,
   parseJudgeResponse,
+  parseObjectionResponse,
 } from "@/lib/judge";
+import { heuristicObjection } from "@/lib/automation";
 import { resolveElo, didProsecutorWin } from "@/lib/elo";
-import type { CaseScenario, EvidenceItem, JudgeVerdict } from "@/lib/types";
+import type {
+  CaseScenario,
+  EvidenceItem,
+  JudgeVerdict,
+  ObjectionRuling,
+  Statement,
+} from "@/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-interface JudgeRequestBody {
+type Action =
+  | { action: "verdict"; body: VerdictBody }
+  | { action: "objection"; body: ObjectionBody };
+
+interface VerdictBody {
   scenario: CaseScenario;
-  prosecutorText: string;
-  defendantText: string;
-  prosecutorEvidence: EvidenceItem[];
-  defendantEvidence: EvidenceItem[];
+  statements: Statement[];
+  allEvidence: EvidenceItem[];
   ranked: boolean;
   juryVotes?: { guilty: number; notGuilty: number };
   prosecutorElo: number;
   defendantElo: number;
+}
+
+interface ObjectionBody {
+  scenario: CaseScenario;
+  statements: Statement[];
+  allEvidence: EvidenceItem[];
+  objectorSide: "prosecution" | "defense";
+  targetIndex: number;
+  grounds: string;
 }
 
 async function runGemini(systemPrompt: string, userPrompt: string): Promise<string> {
@@ -59,81 +80,13 @@ async function runZAI(systemPrompt: string, userPrompt: string): Promise<string>
 
 export async function POST(req: NextRequest) {
   try {
-    const body = (await req.json()) as JudgeRequestBody;
-    const {
-      scenario,
-      prosecutorText,
-      defendantText,
-      prosecutorEvidence,
-      defendantEvidence,
-      ranked,
-      juryVotes,
-      prosecutorElo,
-      defendantElo,
-    } = body;
+    const body = await req.json();
+    const action: Action["action"] = body.action === "objection" ? "objection" : "verdict";
 
-    const userPrompt = buildJudgeUserPrompt({
-      scenario,
-      prosecutorText,
-      defendantText,
-      prosecutorEvidence,
-      defendantEvidence,
-      ranked,
-      juryVotes,
-    });
-
-    let verdict: JudgeVerdict;
-    let engine = "heuristic";
-
-    // 1) Gemini (production)
-    if (process.env.GEMINI_API_KEY) {
-      try {
-        const raw = await runGemini(JUDGE_SYSTEM_PROMPT, userPrompt);
-        verdict = parseJudgeResponse(raw);
-        engine = "gemini";
-      } catch (e) {
-        console.error("gemini judge failed, falling back", e);
-        verdict = fallbackVerdict(body);
-      }
-    } else {
-      // 2) z-ai-web-dev-sdk (sandbox preview)
-      try {
-        const raw = await runZAI(JUDGE_SYSTEM_PROMPT, userPrompt);
-        if (raw && raw.trim()) {
-          verdict = parseJudgeResponse(raw);
-          engine = "z-ai";
-        } else {
-          verdict = fallbackVerdict(body);
-        }
-      } catch (e) {
-        console.error("z-ai judge failed, falling back", e);
-        verdict = fallbackVerdict(body);
-      }
+    if (action === "objection") {
+      return await handleObjection(body as ObjectionBody);
     }
-
-    // ----- Elo resolution (computed server-side) -----
-    const prosecutorWon = didProsecutorWin(verdict.verdict);
-    const prosecutorAdjustment = resolveElo(
-      prosecutorWon,
-      prosecutorElo,
-      defendantElo,
-      verdict.decisiveness,
-    );
-    const defendantAdjustment = resolveElo(
-      !prosecutorWon,
-      defendantElo,
-      prosecutorElo,
-      verdict.decisiveness,
-    );
-
-    return NextResponse.json({
-      verdict,
-      eloAdjustments: {
-        prosecutor: prosecutorAdjustment,
-        defendant: defendantAdjustment,
-      },
-      engine,
-    });
+    return await handleVerdict(body as VerdictBody);
   } catch (e) {
     console.error("judge route error", e);
     return NextResponse.json(
@@ -143,11 +96,110 @@ export async function POST(req: NextRequest) {
   }
 }
 
-function fallbackVerdict(body: JudgeRequestBody): JudgeVerdict {
-  return heuristicVerdict({
-    prosecutorText: body.prosecutorText,
-    defendantText: body.defendantText,
-    prosecutorEvidenceCount: body.prosecutorEvidence.length,
-    defendantEvidenceCount: body.defendantEvidence.length,
+async function handleVerdict(body: VerdictBody) {
+  const {
+    scenario,
+    statements,
+    allEvidence,
+    ranked,
+    juryVotes,
+    prosecutorElo,
+    defendantElo,
+  } = body;
+
+  const userPrompt = buildVerdictUserPrompt({
+    scenario,
+    statements,
+    allEvidence,
+    ranked,
+    juryVotes,
   });
+
+  let verdict: JudgeVerdict;
+  let engine = "heuristic";
+
+  if (process.env.GEMINI_API_KEY) {
+    try {
+      const raw = await runGemini(JUDGE_SYSTEM_PROMPT, userPrompt);
+      verdict = parseJudgeResponse(raw);
+      engine = "gemini";
+    } catch (e) {
+      console.error("gemini verdict failed, falling back", e);
+      verdict = heuristicVerdict({ statements });
+    }
+  } else {
+    try {
+      const raw = await runZAI(JUDGE_SYSTEM_PROMPT, userPrompt);
+      if (raw && raw.trim()) {
+        verdict = parseJudgeResponse(raw);
+        engine = "z-ai";
+      } else {
+        verdict = heuristicVerdict({ statements });
+      }
+    } catch (e) {
+      console.error("z-ai verdict failed, falling back", e);
+      verdict = heuristicVerdict({ statements });
+    }
+  }
+
+  const prosecutorWon = didProsecutorWin(verdict.verdict);
+  const prosecutorAdjustment = resolveElo(
+    prosecutorWon,
+    prosecutorElo,
+    defendantElo,
+    verdict.decisiveness,
+  );
+  const defendantAdjustment = resolveElo(
+    !prosecutorWon,
+    defendantElo,
+    prosecutorElo,
+    verdict.decisiveness,
+  );
+
+  return NextResponse.json({
+    verdict,
+    eloAdjustments: { prosecutor: prosecutorAdjustment, defendant: defendantAdjustment },
+    engine,
+  });
+}
+
+async function handleObjection(body: ObjectionBody) {
+  const { scenario, statements, allEvidence, objectorSide, targetIndex, grounds } = body;
+  const userPrompt = buildObjectionUserPrompt({
+    scenario,
+    statements,
+    allEvidence,
+    objectorSide,
+    targetIndex,
+    grounds,
+  });
+
+  let ruling: ObjectionRuling;
+  let engine = "heuristic";
+
+  if (process.env.GEMINI_API_KEY) {
+    try {
+      const raw = await runGemini(OBJECTION_SYSTEM_PROMPT, userPrompt);
+      ruling = parseObjectionResponse(raw);
+      engine = "gemini";
+    } catch (e) {
+      console.error("gemini objection failed, falling back", e);
+      ruling = heuristicObjection(grounds);
+    }
+  } else {
+    try {
+      const raw = await runZAI(OBJECTION_SYSTEM_PROMPT, userPrompt);
+      if (raw && raw.trim()) {
+        ruling = parseObjectionResponse(raw);
+        engine = "z-ai";
+      } else {
+        ruling = heuristicObjection(grounds);
+      }
+    } catch (e) {
+      console.error("z-ai objection failed, falling back", e);
+      ruling = heuristicObjection(grounds);
+    }
+  }
+
+  return NextResponse.json({ ruling, engine });
 }

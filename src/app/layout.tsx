@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Toaster as Sonner } from "sonner";
+import { ThemeProvider } from "@/components/game/ThemeProvider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -16,7 +17,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "JUDGEMENTIA — Cyber Legal Trial Protocol",
   description:
-    "A real-time multiplayer cyber & corporate legal thriller. Prosecute, defend, and face the verdict of Chief Justice Vanguard.",
+    "A real-time multiplayer cyber & corporate legal thriller. Prosecute, defend, object, and face the verdict of Chief Justice Vanguard.",
   keywords: [
     "Judgementia",
     "multiplayer legal game",
@@ -41,7 +42,7 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground font-mono-terminal`}
       >
-        {children}
+        <ThemeProvider>{children}</ThemeProvider>
         <Sonner
           position="top-right"
           toastOptions={{

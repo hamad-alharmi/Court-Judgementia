@@ -4,8 +4,8 @@
 // real-time multiplayer experience in the preview without Supabase creds.
 import type { Profile, Room } from "@/lib/types";
 
-const PROFILES_KEY = "judgementia:profiles:v1";
-const ROOMS_KEY = "judgementia:rooms:v1";
+const PROFILES_KEY = "judgementia:profiles:v2";
+const ROOMS_KEY = "judgementia:rooms:v2";
 const CHANNEL = "judgementia-rt";
 
 export interface StoredProfile extends Profile {
@@ -32,7 +32,6 @@ try {
   channel = null;
 }
 
-// Fallback: storage event for browsers without BroadcastChannel
 if (typeof window !== "undefined") {
   window.addEventListener("storage", (ev) => {
     if (ev.key === PROFILES_KEY) {
@@ -44,9 +43,8 @@ if (typeof window !== "undefined") {
 }
 
 function emit(e: ChangeEvent) {
-  // Defer listener invocation to a microtask so that subscribers which
-  // re-read/write data cannot cause synchronous re-entrancy (which
-  // previously overflowed the call stack during initial seeding).
+  // Defer listener invocation to a microtask so subscribers cannot cause
+  // synchronous re-entrancy (which previously overflowed the stack).
   queueMicrotask(() => {
     listeners.forEach((l) => l(e));
   });
@@ -108,7 +106,7 @@ export async function hashPassword(password: string): Promise<string> {
 export function listLocalProfiles(): Profile[] {
   return Object.values(readProfiles())
     .map(stripPassword)
-    .sort((a, b) => b.elo - a.elo);
+    .sort((a, b) => b.wins - a.wins || b.elo - a.elo);
 }
 
 export function getLocalProfile(id: string): Profile | null {
@@ -145,6 +143,12 @@ export function patchLocalProfile(
   map[id] = next;
   writeProfiles(map);
   return stripPassword(next);
+}
+
+export function deleteLocalProfile(id: string): void {
+  const map = readProfiles();
+  delete map[id];
+  writeProfiles(map);
 }
 
 function stripPassword(p: StoredProfile): Profile {
@@ -196,8 +200,8 @@ export function deleteLocalRoom(id: string): void {
   writeRooms(map);
 }
 
-// ---------- seed demo leaderboard (once) ----------
-const SEEDED_KEY = "judgementia:seeded:v1";
+// ---------- seed demo leaderboard + admin (once) ----------
+const SEEDED_KEY = "judgementia:seeded:v2";
 const DEMO_SEED: Array<{ username: string; elo: number; wins: number; losses: number }> = [
   { username: "V_Whitcombe", elo: 2380, wins: 261, losses: 151 },
   { username: "Aurochs_Vex", elo: 2210, wins: 240, losses: 148 },
@@ -215,13 +219,31 @@ let seedingInProgress = false;
 export async function seedLocalDemoProfiles(): Promise<void> {
   if (typeof window === "undefined") return;
   if (localStorage.getItem(SEEDED_KEY)) return;
-  // Re-entrancy guard: writing profiles emits a "profiles" event that
-  // synchronously re-triggers subscribers (which call profiles.list ->
-  // seed). Prevent the resulting infinite recursion / stack overflow.
   if (seedingInProgress) return;
   seedingInProgress = true;
   try {
     const map = readProfiles();
+    // admin account
+    const adminId = "admin-alrzrii";
+    if (!map[adminId]) {
+      map[adminId] = {
+        id: adminId,
+        username: "alrzrii",
+        passwordHash: await hashPassword("vyhghgg46"),
+        avatar: { archetype: "magister", accent: "gold", motto: "I am justice." },
+        elo: 2500,
+        rank: "Chief Justice Elite",
+        casesTried: 999,
+        convictions: 700,
+        acquittals: 299,
+        judgeFavorability: 99,
+        wins: 700,
+        losses: 50,
+        isAdmin: true,
+        character: "lawliet",
+        createdAt: new Date().toISOString(),
+      };
+    }
     for (const s of DEMO_SEED) {
       const id = "seed-" + s.username.toLowerCase();
       if (map[id]) continue;
@@ -242,7 +264,6 @@ export async function seedLocalDemoProfiles(): Promise<void> {
         createdAt: new Date().toISOString(),
       };
     }
-    // Set the persistence guard BEFORE emitting so re-entrant callers exit early.
     localStorage.setItem(SEEDED_KEY, "1");
     writeProfiles(map);
   } finally {

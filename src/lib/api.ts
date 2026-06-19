@@ -1,4 +1,4 @@
-// ===== Judgementia — Unified Data API (Supabase | local mock) =====
+// ===== Judgementia — Unified Data API (Supabase | local mock) v2 =====
 import type { Profile, Room } from "@/lib/types";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase/client";
 import { tierForElo } from "@/lib/data/ranks";
@@ -8,7 +8,7 @@ export const DATA_MODE: "supabase" | "local" = isSupabaseConfigured
   ? "supabase"
   : "local";
 
-// ---------- DB row mappers (Supabase snake_case <-> camelCase) ----------
+// ---------- DB row mappers ----------
 interface ProfileRow {
   id: string;
   username: string;
@@ -22,6 +22,8 @@ interface ProfileRow {
   judge_favorability: number;
   wins: number;
   losses: number;
+  is_admin?: boolean | null;
+  character?: string | null;
   created_at: string;
 }
 
@@ -38,6 +40,8 @@ function rowToProfile(r: ProfileRow): Profile {
     judgeFavorability: r.judge_favorability,
     wins: r.wins,
     losses: r.losses,
+    isAdmin: r.is_admin ?? false,
+    character: r.character ?? undefined,
     createdAt: r.created_at,
   };
 }
@@ -55,12 +59,21 @@ interface RoomRow {
   defendant_name: string | null;
   prosecutor_is_ai: boolean;
   defendant_is_ai: boolean;
+  statement_count?: number;
+  ai_difficulty?: Room["aiDifficulty"];
+  case_theme?: string;
   game_state: Room["gameState"];
   created_at: string;
   closed: boolean | null;
 }
 
 function rowToRoom(r: RoomRow): Room {
+  // v2 columns may be absent if the user hasn't run the v2 migration.
+  // Fall back to values stashed in game_state._v2.
+  const gs = (r.game_state ?? {}) as Room["gameState"] & { _v2?: { statementCount?: number; aiDifficulty?: Room["aiDifficulty"]; caseTheme?: string } };
+  const v2 = gs._v2 ?? {};
+  const gameState = { ...gs };
+  delete (gameState as { _v2?: unknown })._v2;
   return {
     id: r.id,
     code: r.code,
@@ -74,13 +87,15 @@ function rowToRoom(r: RoomRow): Room {
     defendantName: r.defendant_name,
     prosecutorIsAI: r.prosecutor_is_ai,
     defendantIsAI: r.defendant_is_ai,
-    gameState: r.game_state,
+    statementCount: r.statement_count ?? v2.statementCount ?? 4,
+    aiDifficulty: (r.ai_difficulty ?? v2.aiDifficulty ?? "medium") as Room["aiDifficulty"],
+    caseTheme: r.case_theme ?? v2.caseTheme ?? "",
+    gameState,
     createdAt: r.created_at,
     closed: r.closed ?? false,
   };
 }
 
-// ---------- hashing (shared) ----------
 export async function hashPassword(password: string): Promise<string> {
   return local.hashPassword(password);
 }
@@ -96,11 +111,13 @@ function newId(): string {
 // PROFILES
 // ============================================================
 export const profiles = {
+  /** Top profiles sorted by wins DESC (then Elo). */
   async list(top = 50): Promise<Profile[]> {
     if (DATA_MODE === "supabase" && supabase) {
       const { data, error } = await supabase
         .from("profiles")
         .select("*")
+        .order("wins", { ascending: false })
         .order("elo", { ascending: false })
         .limit(top);
       if (error) throw error;
@@ -131,19 +148,29 @@ export const profiles = {
     const passwordHash = await hashPassword(password);
     if (DATA_MODE === "supabase" && supabase) {
       const elo = 1000;
-      const { data, error } = await supabase
+      const baseRow = {
+        username,
+        password_hash: passwordHash,
+        avatar,
+        elo,
+        rank: tierForElo(elo),
+      };
+      // Try with v2 columns (is_admin, character) — fall back to base if absent.
+      let { data, error } = await supabase
         .from("profiles")
-        .insert({
-          username,
-          password_hash: passwordHash,
-          avatar,
-          elo,
-          rank: tierForElo(elo),
-        })
+        .insert({ ...baseRow, is_admin: false, character: null })
         .select("*")
         .single();
+      if (error && /column .* does not exist|Could not find the .* column|PGRST204/i.test(error.message)) {
+        const res2 = await supabase
+          .from("profiles")
+          .insert(baseRow)
+          .select("*")
+          .single();
+        data = res2.data;
+        error = res2.error;
+      }
       if (error) {
-        // username unique violation
         throw new Error(error.code === "23505" ? "USERNAME_TAKEN" : error.message);
       }
       return rowToProfile(data as ProfileRow);
@@ -203,16 +230,39 @@ export const profiles = {
         rowPatch.judge_favorability = patch.judgeFavorability;
       if (patch.wins !== undefined) rowPatch.wins = patch.wins;
       if (patch.losses !== undefined) rowPatch.losses = patch.losses;
-      const { data, error } = await supabase
+      const v2Patch: Record<string, unknown> = {};
+      if (patch.isAdmin !== undefined) v2Patch.is_admin = patch.isAdmin;
+      if (patch.character !== undefined) v2Patch.character = patch.character;
+      let { data, error } = await supabase
         .from("profiles")
-        .update(rowPatch)
+        .update({ ...rowPatch, ...v2Patch })
         .eq("id", id)
         .select("*")
         .maybeSingle();
+      if (error && /column .* does not exist|Could not find the .* column|PGRST204/i.test(error.message)) {
+        // retry without v2 columns
+        const res2 = await supabase
+          .from("profiles")
+          .update(rowPatch)
+          .eq("id", id)
+          .select("*")
+          .maybeSingle();
+        data = res2.data;
+        error = res2.error;
+      }
       if (error) throw error;
       return data ? rowToProfile(data as ProfileRow) : null;
     }
     return local.patchLocalProfile(id, patch);
+  },
+
+  async remove(id: string): Promise<void> {
+    if (DATA_MODE === "supabase" && supabase) {
+      const { error } = await supabase.from("profiles").delete().eq("id", id);
+      if (error) throw error;
+      return;
+    }
+    local.deleteLocalProfile(id);
   },
 };
 
@@ -222,7 +272,8 @@ export const profiles = {
 export const rooms = {
   async create(room: Room): Promise<Room> {
     if (DATA_MODE === "supabase" && supabase) {
-      const row = {
+      // Base row (v1 schema). v2 columns are added only if present.
+      const row: Record<string, unknown> = {
         id: room.id,
         code: room.code,
         phase: room.phase,
@@ -238,11 +289,37 @@ export const rooms = {
         game_state: room.gameState,
         closed: room.closed ?? false,
       };
-      const { data, error } = await supabase
+      // Try with v2 columns; if the column is missing, retry without them.
+      const v2Cols = {
+        statement_count: room.statementCount,
+        ai_difficulty: room.aiDifficulty,
+        case_theme: room.caseTheme,
+      };
+      let { data, error } = await supabase
         .from("rooms")
-        .insert(row)
+        .insert({ ...row, ...v2Cols })
         .select("*")
         .single();
+      if (error && /column .* does not exist|Could not find the .* column|PGRST204/i.test(error.message)) {
+        // v2 columns not present — insert v1-only, then patch gameState to carry v2 fields
+        const res2 = await supabase
+          .from("rooms")
+          .insert({
+            ...row,
+            game_state: {
+              ...room.gameState,
+              _v2: {
+                statementCount: room.statementCount,
+                aiDifficulty: room.aiDifficulty,
+                caseTheme: room.caseTheme,
+              },
+            },
+          })
+          .select("*")
+          .single();
+        data = res2.data;
+        error = res2.error;
+      }
       if (error) throw error;
       return rowToRoom(data as RoomRow);
     }
@@ -289,19 +366,46 @@ export const rooms = {
       if (patch.gameState !== undefined) rowPatch.game_state = patch.gameState;
       if (patch.closed !== undefined) rowPatch.closed = patch.closed;
       if (patch.scenarioId !== undefined) rowPatch.scenario_id = patch.scenarioId;
-      const { data, error } = await supabase
+      const v2Patch: Record<string, unknown> = {};
+      if (patch.statementCount !== undefined) v2Patch.statement_count = patch.statementCount;
+      if (patch.aiDifficulty !== undefined) v2Patch.ai_difficulty = patch.aiDifficulty;
+      if (patch.caseTheme !== undefined) v2Patch.case_theme = patch.caseTheme;
+      let { data, error } = await supabase
         .from("rooms")
-        .update(rowPatch)
+        .update({ ...rowPatch, ...v2Patch })
         .eq("id", id)
         .select("*")
         .maybeSingle();
+      if (error && /column .* does not exist|Could not find the .* column|PGRST204/i.test(error.message)) {
+        // v2 columns missing — stash v2 fields into game_state._v2
+        const fresh = await supabase
+          .from("rooms")
+          .select("game_state")
+          .eq("id", id)
+          .maybeSingle();
+        const cur = (fresh.data?.game_state ?? {}) as Record<string, unknown>;
+        const mergedV2: Record<string, unknown> = {
+          ...(cur._v2 as object | undefined),
+        };
+        if (patch.statementCount !== undefined) mergedV2.statementCount = patch.statementCount;
+        if (patch.aiDifficulty !== undefined) mergedV2.aiDifficulty = patch.aiDifficulty;
+        if (patch.caseTheme !== undefined) mergedV2.caseTheme = patch.caseTheme;
+        const mergedGs = { ...cur, _v2: mergedV2 };
+        const res2 = await supabase
+          .from("rooms")
+          .update({ ...rowPatch, game_state: mergedGs })
+          .eq("id", id)
+          .select("*")
+          .maybeSingle();
+        data = res2.data;
+        error = res2.error;
+      }
       if (error) throw error;
       return data ? rowToRoom(data as RoomRow) : null;
     }
     return local.patchLocalRoom(id, patch);
   },
 
-  /** For ranked matchmaking: find an open ranked room awaiting an opponent. */
   async findOpenRankedRoom(): Promise<Room | null> {
     if (DATA_MODE === "supabase" && supabase) {
       const { data, error } = await supabase
@@ -311,10 +415,14 @@ export const rooms = {
         .eq("phase", "lobby")
         .eq("closed", false)
         .order("created_at", { ascending: true })
-        .limit(1)
-        .maybeSingle();
+        .limit(10);
       if (error) throw error;
-      return data ? rowToRoom(data as RoomRow) : null;
+      const rows = (data as RoomRow[] | null) ?? [];
+      // find the first room with an open (non-AI, empty) defendant slot
+      const open = rows
+        .map(rowToRoom)
+        .find((r) => !r.defendantId && !r.defendantIsAI);
+      return open ?? null;
     }
     const open = local
       .listLocalRooms()
@@ -323,7 +431,8 @@ export const rooms = {
           r.matchmakingType === "ranked" &&
           r.phase === "lobby" &&
           !r.closed &&
-          !r.defendantId,
+          !r.defendantId &&
+          !r.defendantIsAI,
       )
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
     return open[0] || null;

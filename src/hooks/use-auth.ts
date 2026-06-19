@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { profiles, DATA_MODE, local } from "@/lib/api";
 import type { AvatarConfig, Profile } from "@/lib/types";
 
-const SESSION_KEY = "judgementia:session:v1";
+const SESSION_KEY = "judgementia:session:v2";
 
 function readSession(): Profile | null {
   if (typeof window === "undefined") return null;

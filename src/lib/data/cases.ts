@@ -1,35 +1,36 @@
-// ===== Judgementia — High-Stakes Case File Dataset =====
+// ===== Judgementia — Case File Dataset (plain, readable English) =====
 import type { CaseScenario } from "@/lib/types";
 
 export const CASE_SCENARIOS: CaseScenario[] = [
   {
     id: "rogue-auditor",
     title: "The Rogue Auditor",
+    theme: "cyber",
     facts:
-      "A cybersecurity auditor intentionally bypassed the company's internal mainframe security protocols, exposing sensitive development source code to the public web.",
+      "A cybersecurity auditor is accused of breaking past the company's mainframe security and leaking secret source code to the public web.",
     evidence: [
       {
         id: "ra-ev1",
-        title: "Root SSH Log 03:44 AM",
+        title: "Root SSH Log at 03:44 AM",
         description:
-          "Shows the defendant's unique cryptographic key logging into the core production mainframe at 03:44 AM, six minutes before the public exposure event. The key fingerprint matches the auditor's issued credential and the session originated from their assigned terminal subnet.",
+          "Server logs show the defendant's private key logging into the main production server at 03:44 AM, just six minutes before the leak went public. The key matches the one issued to the auditor.",
         assetType: "Mainframe root logs",
         side: "prosecution",
       },
       {
         id: "ra-ev2",
-        title: "Internal Memo Leak",
+        title: "Warning Email to Execs",
         description:
-          "Encrypted chat logs showing the defendant warned executives about systemic vulnerabilities 24 hours prior to the incident, formally requesting a code-freeze that was denied. The denial was logged but never surfaced to the security committee.",
-        assetType: "Decrypted chat streams",
+          "An email from the defendant, sent 24 hours before the leak, warns leadership about weak security and asks for a code freeze. Leadership denied the freeze but never told the security team.",
+        assetType: "Email archive",
         side: "defense",
       },
       {
         id: "ra-ev3",
-        title: "Offshore Ledger Entry",
+        title: "Anonymous Crypto Transfer",
         description:
-          "An anonymous transfer of 50 ETH to an unverified wallet node immediately following the data breach. The wallet has no KYC linkage, and the routing path transits three mixers before terminating at a cold-storage vault of unknown ownership.",
-        assetType: "On-chain forensic ledger",
+          "A transfer of 50 ETH to an unknown wallet happened right after the leak. The wallet has no owner on file, and the money passed through three mixing services before landing in cold storage.",
+        assetType: "On-chain ledger",
         side: "ambiguous",
       },
     ],
@@ -37,31 +38,32 @@ export const CASE_SCENARIOS: CaseScenario[] = [
   {
     id: "industrial-espionage",
     title: "Industrial Espionage",
+    theme: "corporate fraud",
     facts:
-      "A developer is accused of secretly copy-pasting proprietary code from an unverified third-party machine-learning model into a secured banking framework.",
+      "A developer is accused of copying code from an unverified third-party AI model and pasting it into a secure banking system.",
     evidence: [
       {
         id: "ie-ev1",
-        title: "Decompiled Binary Delta",
+        title: "Code Match Report",
         description:
-          "A code comparison showing 98% structural similarity between the banking framework's new inference module and the stolen model. Identical tensor layout, identical dropout seeding, and matching license-header stubs survive the decompilation.",
-        assetType: "Binary delta analysis",
+          "A side-by-side check shows the banking system's new AI module is 98% identical to a stolen model. Same layout, same random seed, and the same leftover license headers are still in the files.",
+        assetType: "Binary comparison",
         side: "prosecution",
       },
       {
         id: "ie-ev2",
-        title: "Authorized Sandbox Log",
+        title: "Approved Test Access",
         description:
-          "A compliance timestamp proving the developer was granted testing permission for that specific repository on the morning of integration, signed by the head of platform security. The sandbox record includes an explicit 'evaluate for adoption' annotation.",
-        assetType: "Compliance access log",
+          "A timestamped approval shows the head of security gave the developer permission to test that exact repo on the morning of the merge. The note says 'evaluate for adoption'.",
+        assetType: "Access log",
         side: "defense",
       },
       {
         id: "ie-ev3",
-        title: "Scrubbed Local Commit History",
+        title: "Wiped Git History",
         description:
-          "A local git log showing forced history deletions right before the internal audit, with reflog residue pointing to twelve squashed commits. Recovered commit messages reference 'cleanup', 'remove vendor stubs', and 'purge attribution'.",
-        assetType: "Recovered git reflog",
+          "The developer's local git log shows twelve commits were force-deleted just before the audit. Recovered messages include 'cleanup', 'remove vendor stubs', and 'purge attribution'.",
+        assetType: "Recovered git log",
         side: "prosecution",
       },
     ],
@@ -69,31 +71,32 @@ export const CASE_SCENARIOS: CaseScenario[] = [
   {
     id: "supply-chain-collision",
     title: "Supply Chain Collision",
+    theme: "supply chain",
     facts:
-      "A network technician authorized an unverified, forced system patch to an automated logistics facility network, inducing a multi-million dollar supply chain collision.",
+      "A network tech is accused of pushing an unverified system patch that crashed an automated warehouse, causing a multi-million dollar pile-up.",
     evidence: [
       {
         id: "sc-ev1",
-        title: "Patch Signature Mismatch",
+        title: "Broken Patch Signature",
         description:
-          "A network report proving the firmware patch bypassed the central cryptographic security handshake. The expected SHA-512 signature resolves to a null digest, and the patch header carries a forged CA chain with an expired root.",
-        assetType: "Network security report",
+          "A security report shows the patch skipped the central signature check. The expected hash is empty, and the patch's security certificate chain is expired and forged.",
+        assetType: "Network report",
         side: "prosecution",
       },
       {
         id: "sc-ev2",
-        title: "Automated Overdrive Override",
+        title: "Emergency Stop Ignored",
         description:
-          "Telemetry showing the logistics facility's autonomous machinery ignored automated emergency stop commands for 11 seconds prior to the patch deployment. The override flag was set by a upstream orchestrator, not by the technician's terminal.",
-        assetType: "Facility telemetry stream",
+          "Warehouse logs show the machines ignored the emergency stop command for 11 seconds BEFORE the patch was applied. The override was set by an upstream controller, not the tech's terminal.",
+        assetType: "Machine telemetry",
         side: "defense",
       },
       {
         id: "sc-ev3",
-        title: "Spoofed IP Routing Table",
+        title: "Faked IP Address",
         description:
-          "Forensic evidence showing the patch request originated from an external node mimicking the technician's terminal ID. ARP cache entries reveal a cloned MAC address and a TTL anomaly inconsistent with the internal backbone.",
-        assetType: "Forensic routing capture",
+          "Forensic capture shows the patch request came from an outside machine pretending to be the tech's terminal. The MAC address was cloned and the network hop count doesn't match the internal network.",
+        assetType: "Routing capture",
         side: "ambiguous",
       },
     ],

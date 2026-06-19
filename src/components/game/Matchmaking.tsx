@@ -1,17 +1,30 @@
 "use client";
-// ===== Matchmaking Core =====
+// ===== Matchmaking Core (v2: setup options + settings + admin) =====
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Header } from "./AvatarCustomizer";
+import { CreateRoomModal } from "./CreateRoomModal";
+import { SettingsModal } from "./SettingsModal";
+import { AdminPanel } from "./AdminPanel";
 import { useAuth } from "@/hooks/use-auth";
 import { rooms, DATA_MODE } from "@/lib/api";
 import { generateChamberCode, normalizeCode, isValidChamberCode } from "@/lib/codec";
 import { randomScenarioId } from "@/lib/data/cases";
 import { newRoom } from "@/lib/room";
 import { toast } from "sonner";
-import { Gavel, LogIn, Plus, Swords, Cpu, ArrowRight } from "lucide-react";
+import {
+  Gavel,
+  LogIn,
+  Plus,
+  Swords,
+  Cpu,
+  ArrowRight,
+  Settings,
+  Shield,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
+import { RANKED_STATEMENT_COUNT } from "@/lib/types";
 import type { Room } from "@/lib/types";
 
 export function Matchmaking({ onEnterRoom }: { onEnterRoom: (id: string) => void }) {
@@ -19,6 +32,9 @@ export function Matchmaking({ onEnterRoom }: { onEnterRoom: (id: string) => void
   const [joinCode, setJoinCode] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [lobbies, setLobbies] = useState<Room[]>([]);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [adminOpen, setAdminOpen] = useState(false);
 
   async function refreshLobbies() {
     try {
@@ -34,7 +50,7 @@ export function Matchmaking({ onEnterRoom }: { onEnterRoom: (id: string) => void
     return () => clearInterval(iv);
   }, []);
 
-  async function createCustom() {
+  async function quickCreate() {
     if (!profile) return;
     setBusy("create");
     try {
@@ -46,6 +62,12 @@ export function Matchmaking({ onEnterRoom }: { onEnterRoom: (id: string) => void
         hostId: profile.id,
         prosecutorId: profile.id,
         prosecutorName: profile.username,
+        defendantId: null,
+        defendantName: "AI Defense",
+        defendantIsAI: true,
+        statementCount: 4,
+        aiDifficulty: "medium",
+        caseTheme: "cyber",
         phase: "lobby",
       });
       await rooms.create(room);
@@ -72,7 +94,12 @@ export function Matchmaking({ onEnterRoom }: { onEnterRoom: (id: string) => void
         toast.error(`No active chamber found for ${code}.`);
         return;
       }
-      if (room.phase !== "lobby") {
+      if (room.phase !== "lobby" && room.phase !== "case_intro") {
+        // allow re-entry if already a participant
+        if (room.prosecutorId === profile.id || room.defendantId === profile.id) {
+          onEnterRoom(room.id);
+          return;
+        }
         toast.error("That trial is already in session.");
         return;
       }
@@ -80,20 +107,27 @@ export function Matchmaking({ onEnterRoom }: { onEnterRoom: (id: string) => void
         toast.error("That chamber has been adjourned.");
         return;
       }
-      // If already a participant, just re-enter
       if (room.prosecutorId === profile.id || room.defendantId === profile.id) {
         onEnterRoom(room.id);
         return;
       }
-      if (room.defendantId && !room.defendantIsAI) {
+      // take first open slot
+      if (!room.prosecutorId || room.prosecutorIsAI) {
+        await rooms.update(room.id, {
+          prosecutorId: profile.id,
+          prosecutorName: profile.username,
+          prosecutorIsAI: false,
+        });
+      } else if (!room.defendantId || room.defendantIsAI) {
+        await rooms.update(room.id, {
+          defendantId: profile.id,
+          defendantName: profile.username,
+          defendantIsAI: false,
+        });
+      } else {
         toast.error("That chamber is already full.");
         return;
       }
-      await rooms.update(room.id, {
-        defendantId: profile.id,
-        defendantName: profile.username,
-        defendantIsAI: false,
-      });
       toast.success(`Joined chamber ${room.code}.`);
       onEnterRoom(room.id);
     } catch {
@@ -125,10 +159,13 @@ export function Matchmaking({ onEnterRoom }: { onEnterRoom: (id: string) => void
           hostId: profile.id,
           prosecutorId: profile.id,
           prosecutorName: profile.username,
+          statementCount: RANKED_STATEMENT_COUNT,
+          aiDifficulty: "hard",
+          caseTheme: "cyber",
           phase: "lobby",
         });
         await rooms.create(room);
-        toast.info(`Ranked queue entered. Awaiting opponent...`);
+        toast.info("Ranked queue entered. Awaiting opponent...");
         onEnterRoom(room.id);
       }
     } catch {
@@ -150,9 +187,12 @@ export function Matchmaking({ onEnterRoom }: { onEnterRoom: (id: string) => void
         hostId: profile.id,
         prosecutorId: profile.id,
         prosecutorName: profile.username,
-        defendantId: "ai-defendant",
-        defendantName: "Counsel-7 (AI)",
+        defendantId: null,
+        defendantName: "AI Defense",
         defendantIsAI: true,
+        statementCount: 4,
+        aiDifficulty: "medium",
+        caseTheme: "cyber",
         phase: "lobby",
       });
       await rooms.create(room);
@@ -170,8 +210,8 @@ export function Matchmaking({ onEnterRoom }: { onEnterRoom: (id: string) => void
       id: "create",
       icon: Plus,
       title: "Create Custom Chamber",
-      desc: "Provision a casual match and receive a 4-letter join code.",
-      onClick: createCustom,
+      desc: "Configure statements, AI roles, difficulty, and case theme.",
+      onClick: () => setCreateOpen(true),
       tone: "gold" as const,
     },
     {
@@ -186,7 +226,7 @@ export function Matchmaking({ onEnterRoom }: { onEnterRoom: (id: string) => void
       id: "ranked",
       icon: Swords,
       title: "Ranked Matchmaking Queue",
-      desc: "Skill-based competitive queue. Elo at stake.",
+      desc: `Skill-based competitive queue. ${RANKED_STATEMENT_COUNT} statements, AI assist blocked.`,
       onClick: rankedQueue,
       tone: "crimson" as const,
     },
@@ -194,19 +234,43 @@ export function Matchmaking({ onEnterRoom }: { onEnterRoom: (id: string) => void
       id: "practice",
       icon: Cpu,
       title: "Practice vs AI",
-      desc: "Solo drill against an AI defense counsel. No Elo risk.",
+      desc: "Solo drill against AI defense counsel. No Elo risk.",
       onClick: practiceVsAI,
       tone: "white" as const,
     },
   ];
 
   return (
-    <section className="panel sharp flex flex-col gap-5 p-5">
-      <Header
-        index="04"
-        title="Matchmaking Core"
-        subtitle="Select your entry vector"
-      />
+    <section className="panel sharp flex flex-col gap-4 p-5">
+      <div className="flex items-center justify-between">
+        <Header
+          index="04"
+          title="Matchmaking Core"
+          subtitle="Select your entry vector"
+        />
+        <div className="flex items-center gap-2">
+          {profile?.isAdmin && (
+            <Button
+              onClick={() => setAdminOpen(true)}
+              variant="ghost"
+              size="icon"
+              className="sharp h-9 w-9 border border-gold/50 text-gold hover:bg-gold hover:text-black"
+              title="Admin panel"
+            >
+              <Shield className="h-4 w-4" />
+            </Button>
+          )}
+          <Button
+            onClick={() => setSettingsOpen(true)}
+            variant="ghost"
+            size="icon"
+            className="sharp h-9 w-9 border border-white/20 text-white/60 hover:text-white"
+            title="Settings"
+          >
+            <Settings className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {actions.map((a) => {
@@ -277,7 +341,7 @@ export function Matchmaking({ onEnterRoom }: { onEnterRoom: (id: string) => void
         </Button>
       </div>
 
-      {/* recent open lobbies (QoL) */}
+      {/* recent open lobbies */}
       {lobbies.length > 0 && (
         <div>
           <div className="mb-2 flex items-center gap-2">
@@ -297,14 +361,21 @@ export function Matchmaking({ onEnterRoom }: { onEnterRoom: (id: string) => void
                   try {
                     if (
                       r.prosecutorId !== profile.id &&
-                      r.defendantId !== profile.id &&
-                      (!r.defendantId || r.defendantIsAI)
+                      r.defendantId !== profile.id
                     ) {
-                      await rooms.update(r.id, {
-                        defendantId: profile.id,
-                        defendantName: profile.username,
-                        defendantIsAI: false,
-                      });
+                      if (!r.prosecutorId || r.prosecutorIsAI) {
+                        await rooms.update(r.id, {
+                          prosecutorId: profile.id,
+                          prosecutorName: profile.username,
+                          prosecutorIsAI: false,
+                        });
+                      } else if (!r.defendantId || r.defendantIsAI) {
+                        await rooms.update(r.id, {
+                          defendantId: profile.id,
+                          defendantName: profile.username,
+                          defendantIsAI: false,
+                        });
+                      }
                     }
                     onEnterRoom(r.id);
                   } finally {
@@ -327,9 +398,15 @@ export function Matchmaking({ onEnterRoom }: { onEnterRoom: (id: string) => void
       <p className="font-mono-terminal text-[9px] uppercase tracking-[0.2em] text-white/25">
         Data layer:{" "}
         <span className={DATA_MODE === "supabase" ? "text-emerald-400" : "text-amber-400"}>
-          {DATA_MODE === "supabase" ? "SUPABASE LIVE" : "LOCAL MOCK (set Supabase env for live deploy)"}
+          {DATA_MODE === "supabase" ? "SUPABASE LIVE" : "LOCAL MOCK"}
         </span>
       </p>
+
+      <CreateRoomModal open={createOpen} onOpenChange={setCreateOpen} onCreated={onEnterRoom} />
+      <SettingsModal open={settingsOpen} onOpenChange={setSettingsOpen} />
+      {profile?.isAdmin && (
+        <AdminPanel open={adminOpen} onOpenChange={setAdminOpen} />
+      )}
     </section>
   );
 }
