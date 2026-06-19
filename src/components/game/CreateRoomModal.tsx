@@ -10,6 +10,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useAuth } from "@/hooks/use-auth";
+import { useSound } from "@/hooks/use-sound";
 import { rooms } from "@/lib/api";
 import { generateChamberCode } from "@/lib/codec";
 import { newRoom } from "@/lib/room";
@@ -36,6 +37,7 @@ export function CreateRoomModal({
   onCreated: (roomId: string) => void;
 }) {
   const { profile } = useAuth();
+  const sounds = useSound();
   const [statementCount, setStatementCount] = useState<number>(4);
   const [aiRoles, setAiRoles] = useState<Set<AIRole>>(new Set(["defense"]));
   const [difficulty, setDifficulty] = useState<AIDifficulty>("medium");
@@ -43,6 +45,7 @@ export function CreateRoomModal({
   const [generating, setGenerating] = useState(false);
 
   function toggleRole(role: AIRole) {
+    sounds.click();
     setAiRoles((prev) => {
       const next = new Set(prev);
       if (next.has(role)) next.delete(role);
@@ -113,7 +116,10 @@ export function CreateRoomModal({
                 <button
                   key={t}
                   type="button"
-                  onClick={() => setTheme(t)}
+                  onClick={() => {
+                    sounds.click();
+                    setTheme(t);
+                  }}
                   className={cn(
                     "sharp border px-2 py-1 text-[9px] uppercase tracking-wider transition",
                     theme === t
@@ -140,7 +146,10 @@ export function CreateRoomModal({
                 <button
                   key={n}
                   type="button"
-                  onClick={() => setStatementCount(n)}
+                  onClick={() => {
+                    sounds.click();
+                    setStatementCount(n);
+                  }}
                   className={cn(
                     "sharp border py-2 text-sm font-bold transition",
                     statementCount === n
@@ -195,7 +204,10 @@ export function CreateRoomModal({
                 <button
                   key={d}
                   type="button"
-                  onClick={() => setDifficulty(d)}
+                  onClick={() => {
+                    sounds.click();
+                    setDifficulty(d);
+                  }}
                   className={cn(
                     "sharp border py-2 text-xs uppercase tracking-wider transition",
                     difficulty === d
@@ -212,7 +224,10 @@ export function CreateRoomModal({
 
         <div className="border-t border-white/10 p-5">
           <Button
-            onClick={createRoom}
+            onClick={() => {
+              sounds.click();
+              createRoom();
+            }}
             disabled={generating}
             className="sharp h-11 w-full border border-gold bg-gold font-mono-terminal text-xs font-bold uppercase tracking-[0.25em] text-black hover:bg-gold/85"
           >

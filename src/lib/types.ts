@@ -137,6 +137,14 @@ export interface Room {
   closed?: boolean;
 }
 
+export interface MatchHistoryEntry {
+  scenarioId: string;
+  verdict: string;
+  won: boolean;
+  eloDelta: number;
+  at: number;
+}
+
 export interface Profile {
   id: string;
   username: string;
@@ -153,6 +161,8 @@ export interface Profile {
   isAdmin?: boolean;
   /** equipped character theme (admin can equip "lawliet") */
   character?: string;
+  /** last 20 match outcomes (most recent last) */
+  matchHistory?: MatchHistoryEntry[];
   createdAt: string;
 }
 

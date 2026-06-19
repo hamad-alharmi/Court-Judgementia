@@ -119,7 +119,12 @@ export function GameApp() {
 
   if (phase === "courtroom" && roomId) {
     return (
-      <Courtroom roomId={roomId} onLeave={leaveRoom} onRematch={leaveRoom} />
+      <Courtroom
+        roomId={roomId}
+        onLeave={leaveRoom}
+        onRematch={leaveRoom}
+        onEnterRoom={enterRoom}
+      />
     );
   }
 

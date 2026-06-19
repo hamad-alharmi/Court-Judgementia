@@ -12,10 +12,12 @@ import { ObjectionModal } from "./ObjectionModal";
 import { ConnectionIndicator } from "./ConnectionIndicator";
 import { useGameRoom } from "@/hooks/use-game-room";
 import { useAuth } from "@/hooks/use-auth";
+import { useSound } from "@/hooks/use-sound";
 import { profiles, rooms } from "@/lib/api";
 import { getScenarioById, CASE_SCENARIOS } from "@/lib/data/cases";
 import { tierForElo } from "@/lib/data/ranks";
 import { resolveElo, didProsecutorWin } from "@/lib/elo";
+import { generateChamberCode } from "@/lib/codec";
 import {
   buildObjection as buildObjectionObj,
   generateAIArgument,
@@ -33,11 +35,12 @@ import type {
   CaseScenario,
   EvidenceItem,
   GameState,
+  MatchHistoryEntry,
   Objection,
   Room,
   Statement,
 } from "@/lib/types";
-import { nextPhaseAfterStatement } from "@/lib/room";
+import { nextPhaseAfterStatement, newRoom } from "@/lib/room";
 import { toast } from "sonner";
 import {
   ArrowLeft,
@@ -64,13 +67,16 @@ export function Courtroom({
   roomId,
   onLeave,
   onRematch,
+  onEnterRoom,
 }: {
   roomId: string;
   onLeave: () => void;
   onRematch: () => void;
+  onEnterRoom: (id: string) => void;
 }) {
   const { room, loading, update } = useGameRoom(roomId);
   const { profile, applyResult, refresh } = useAuth();
+  const sounds = useSound();
 
   const [text, setText] = useState("");
   const [presentedIds, setPresentedIds] = useState<string[]>([]);
@@ -82,11 +88,14 @@ export function Courtroom({
   const [generatedScenario, setGeneratedScenario] = useState<CaseScenario | null>(null);
   const [genLoading, setGenLoading] = useState(false);
   const [ttsPlaying, setTtsPlaying] = useState(false);
+  const [rematching, setRematching] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const doneRef = useRef<Set<string>>(new Set());
   const draftTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastPhaseSeen = useRef<string>("");
   const lawlietShownRef = useRef(false);
+  // Tracks the last timer threshold we beeped for, so we only beep once per crossing.
+  const lastTimerBeepRef = useRef<number>(TURN_DURATION);
 
   // merge generated scenario with room's scenarioId
   const scenario = useMemo(() => {
@@ -110,9 +119,10 @@ export function Courtroom({
   // ----- turn notification toast: fire when it becomes the player's turn -----
   useEffect(() => {
     if (isMyTurn) {
+      sounds.turnStart();
       toast.info("Your turn — file your statement!", { duration: 4000 });
     }
-  }, [isMyTurn]);
+  }, [isMyTurn, sounds]);
 
   const currentTurnIsAI =
     !!room &&
@@ -122,6 +132,24 @@ export function Courtroom({
   const remaining = room?.gameState.turnStartedAt
     ? Math.max(0, TURN_DURATION - Math.floor((now - room.gameState.turnStartedAt) / 1000))
     : TURN_DURATION;
+
+  // ----- timer warning beeps at 10s / 5s / 3s -----
+  useEffect(() => {
+    if (!isMyTurn) {
+      lastTimerBeepRef.current = TURN_DURATION;
+      return;
+    }
+    // fire a beep when remaining first crosses each threshold
+    const prev = lastTimerBeepRef.current;
+    const thresholds = [10, 5, 3];
+    for (const t of thresholds) {
+      if (remaining <= t && prev > t) {
+        sounds.timer();
+        break;
+      }
+    }
+    lastTimerBeepRef.current = remaining;
+  }, [remaining, isMyTurn, sounds]);
 
   // ----- detect phase transition into case_intro → show Lawliet if admin -----
   useEffect(() => {
@@ -354,6 +382,7 @@ export function Courtroom({
       });
       setText("");
       setPresentedIds([]);
+      sounds.fileStatement();
       toast.success(
         side === "prosecution"
           ? `Prosecution statement (R${stmt.round}) filed.`
@@ -364,7 +393,7 @@ export function Courtroom({
         speakStatement(finalText);
       }
     },
-    [room, scenario, presentedIds, update, profile],
+    [room, scenario, presentedIds, update, profile, sounds],
   );
 
   async function runAITurn() {
@@ -481,6 +510,11 @@ export function Courtroom({
           },
         },
       });
+      if (ruling.ruling === "SUSTAINED") {
+        sounds.sustained();
+      } else {
+        sounds.overruled();
+      }
       toast(
         ruling.ruling === "SUSTAINED"
           ? `OBJECTION SUSTAINED — ${ruling.reasoning.slice(0, 80)}`
@@ -548,11 +582,19 @@ export function Courtroom({
       const eloAdj = data.eloAdjustments;
 
       await update({ gameState: { ...gs, verdict } });
+      sounds.verdict();
 
       const prosecutWon = didProsecutorWin(verdict.verdict);
       if (pProfile) {
         const adj = eloAdj.prosecutor;
         const won = prosecutWon;
+        const entry: MatchHistoryEntry = {
+          scenarioId: room.scenarioId,
+          verdict: verdict.verdict,
+          won,
+          eloDelta: adj.newElo - pProfile.elo,
+          at: Date.now(),
+        };
         await profiles.update(pProfile.id, {
           elo: adj.newElo,
           rank: tierForElo(adj.newElo),
@@ -565,12 +607,20 @@ export function Courtroom({
             0,
             100,
           ),
+          matchHistory: [...(pProfile.matchHistory ?? []), entry].slice(-20),
         });
         if (pProfile.id === profile.id) await applyResult({});
       }
       if (dProfile) {
         const adj = eloAdj.defendant;
         const won = !prosecutWon;
+        const entry: MatchHistoryEntry = {
+          scenarioId: room.scenarioId,
+          verdict: verdict.verdict,
+          won,
+          eloDelta: adj.newElo - dProfile.elo,
+          at: Date.now(),
+        };
         await profiles.update(dProfile.id, {
           elo: adj.newElo,
           rank: tierForElo(adj.newElo),
@@ -583,6 +633,7 @@ export function Courtroom({
             0,
             100,
           ),
+          matchHistory: [...(dProfile.matchHistory ?? []), entry].slice(-20),
         });
         if (dProfile.id === profile.id) await applyResult({});
       }
@@ -617,7 +668,54 @@ export function Courtroom({
       });
     }
     setPresentedIds((prev) => (prev.includes(e.id) ? prev : [...prev, e.id]));
+    sounds.evidence();
     toast.success(`Exhibit "${e.title}" injected at cursor.`);
+  }
+
+  // ===== quick rematch — provision a new casual chamber with the same setup =====
+  async function quickRematch() {
+    if (!profile || !room) return;
+    setRematching(true);
+    try {
+      const code = generateChamberCode();
+      // Preserve role: defendant stays defendant; everyone else becomes prosecutor (host).
+      const wasDefendant = myRole === "defendant";
+      const created = wasDefendant
+        ? newRoom({
+            code,
+            matchmakingType: "casual",
+            scenarioId: room.scenarioId,
+            hostId: profile.id,
+            defendantId: profile.id,
+            defendantName: profile.username,
+            defendantIsAI: false,
+            statementCount: room.statementCount,
+            aiDifficulty: room.aiDifficulty,
+            caseTheme: room.caseTheme,
+            phase: "lobby",
+          })
+        : newRoom({
+            code,
+            matchmakingType: "casual",
+            scenarioId: room.scenarioId,
+            hostId: profile.id,
+            prosecutorId: profile.id,
+            prosecutorName: profile.username,
+            prosecutorIsAI: false,
+            statementCount: room.statementCount,
+            aiDifficulty: room.aiDifficulty,
+            caseTheme: room.caseTheme,
+            phase: "lobby",
+          });
+      await rooms.create(created);
+      toast.success(`New chamber ${created.code} ready — share code with opponent.`);
+      onEnterRoom(created.id);
+    } catch (e) {
+      console.error(e);
+      toast.error("Failed to start new trial.");
+    } finally {
+      setRematching(false);
+    }
   }
 
   // ===== Lawliet voice — plays the character's sound bite =====
@@ -842,7 +940,8 @@ export function Courtroom({
             scenario={scenario}
             myRole={myRole}
             onLeave={onLeave}
-            onRematch={onRematch}
+            onRematch={quickRematch}
+            rematching={rematching}
           />
         ) : (
           <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[65fr_35fr]">
@@ -855,7 +954,10 @@ export function Courtroom({
               {canObject && (
                 <button
                   type="button"
-                  onClick={() => setObjectionOpen(true)}
+                  onClick={() => {
+                    sounds.objection();
+                    setObjectionOpen(true);
+                  }}
                   className="animate-red-pulse sharp group flex items-center justify-between border border-red-500/60 bg-red-500/[0.07] px-4 py-3 transition hover:bg-red-500/20"
                 >
                   <span className="flex items-center gap-2.5 font-mono-terminal text-xs font-bold uppercase tracking-[0.25em] text-red-400">
@@ -1935,12 +2037,14 @@ function VerdictView({
   myRole,
   onLeave,
   onRematch,
+  rematching,
 }: {
   room: Room;
   scenario: CaseScenario;
   myRole: string;
   onLeave: () => void;
   onRematch: () => void;
+  rematching: boolean;
 }) {
   const v = room.gameState.verdict!;
   const guilty = v.verdict === "GUILTY";
@@ -2081,13 +2185,25 @@ function VerdictView({
         transition={{ duration: 0.4, delay: 1.3 }}
         className="mt-5 flex flex-col gap-3 sm:flex-row sm:justify-center"
       >
-        <Button
-          onClick={onRematch}
-          className="sharp h-12 border border-gold bg-gold px-8 font-mono-terminal text-xs font-bold uppercase tracking-[0.3em] text-black transition hover:bg-gold/85 hover:shadow-[0_0_24px_-6px_var(--gold)]"
-        >
-          <RefreshCw className="h-4 w-4" />
-          New Trial
-        </Button>
+        {!isSpectator && (
+          <Button
+            onClick={onRematch}
+            disabled={rematching}
+            className="sharp h-12 border border-gold bg-gold px-8 font-mono-terminal text-xs font-bold uppercase tracking-[0.3em] text-black transition hover:bg-gold/85 hover:shadow-[0_0_24px_-6px_var(--gold)] disabled:opacity-50"
+          >
+            {rematching ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Convening...
+              </>
+            ) : (
+              <>
+                <RefreshCw className="h-4 w-4" />
+                New Trial
+              </>
+            )}
+          </Button>
+        )}
         <Button
           onClick={onLeave}
           variant="ghost"

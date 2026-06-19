@@ -24,6 +24,7 @@ interface ProfileRow {
   losses: number;
   is_admin?: boolean | null;
   character?: string | null;
+  match_history?: Profile["matchHistory"] | null;
   created_at: string;
 }
 
@@ -31,6 +32,9 @@ function rowToProfile(r: ProfileRow): Profile {
   // Hardcoded admin override: alrzrii is always admin + Lawliet character,
   // even before the is_admin/character columns exist (v1 schema compat).
   const isHardcodedAdmin = r.username?.toLowerCase() === "alrzrii";
+  const matchHistory = Array.isArray(r.match_history)
+    ? (r.match_history as Profile["matchHistory"])
+    : undefined;
   return {
     id: r.id,
     username: r.username,
@@ -45,6 +49,7 @@ function rowToProfile(r: ProfileRow): Profile {
     losses: r.losses,
     isAdmin: isHardcodedAdmin || (r.is_admin ?? false),
     character: isHardcodedAdmin ? "lawliet" : (r.character ?? undefined),
+    matchHistory,
     createdAt: r.created_at,
   };
 }
@@ -158,20 +163,36 @@ export const profiles = {
         elo,
         rank: tierForElo(elo),
       };
-      // Try with v2 columns (is_admin, character) — fall back to base if absent.
+      // Try with v2 columns (is_admin, character, match_history) — fall back to base if absent.
       let { data, error } = await supabase
         .from("profiles")
-        .insert({ ...baseRow, is_admin: false, character: null })
+        .insert({
+          ...baseRow,
+          is_admin: false,
+          character: null,
+          match_history: [],
+        })
         .select("*")
         .single();
       if (error && /column .* does not exist|Could not find the .* column|PGRST204/i.test(error.message)) {
+        // Retry without match_history first, then without all v2 cols.
         const res2 = await supabase
           .from("profiles")
-          .insert(baseRow)
+          .insert({ ...baseRow, is_admin: false, character: null })
           .select("*")
           .single();
-        data = res2.data;
-        error = res2.error;
+        if (res2.error && /column .* does not exist|Could not find the .* column|PGRST204/i.test(res2.error.message)) {
+          const res3 = await supabase
+            .from("profiles")
+            .insert(baseRow)
+            .select("*")
+            .single();
+          data = res3.data;
+          error = res3.error;
+        } else {
+          data = res2.data;
+          error = res2.error;
+        }
       }
       if (error) {
         throw new Error(error.code === "23505" ? "USERNAME_TAKEN" : error.message);
@@ -236,6 +257,7 @@ export const profiles = {
       const v2Patch: Record<string, unknown> = {};
       if (patch.isAdmin !== undefined) v2Patch.is_admin = patch.isAdmin;
       if (patch.character !== undefined) v2Patch.character = patch.character;
+      if (patch.matchHistory !== undefined) v2Patch.match_history = patch.matchHistory;
       let { data, error } = await supabase
         .from("profiles")
         .update({ ...rowPatch, ...v2Patch })
@@ -243,15 +265,29 @@ export const profiles = {
         .select("*")
         .maybeSingle();
       if (error && /column .* does not exist|Could not find the .* column|PGRST204/i.test(error.message)) {
-        // retry without v2 columns
+        // Retry without match_history (it may be the only missing column).
+        const withoutHistory: Record<string, unknown> = { ...v2Patch };
+        delete withoutHistory.match_history;
         const res2 = await supabase
           .from("profiles")
-          .update(rowPatch)
+          .update({ ...rowPatch, ...withoutHistory })
           .eq("id", id)
           .select("*")
           .maybeSingle();
-        data = res2.data;
-        error = res2.error;
+        if (res2.error && /column .* does not exist|Could not find the .* column|PGRST204/i.test(res2.error.message)) {
+          // Retry again without any v2 columns.
+          const res3 = await supabase
+            .from("profiles")
+            .update(rowPatch)
+            .eq("id", id)
+            .select("*")
+            .maybeSingle();
+          data = res3.data;
+          error = res3.error;
+        } else {
+          data = res2.data;
+          error = res2.error;
+        }
       }
       if (error) throw error;
       return data ? rowToProfile(data as ProfileRow) : null;
@@ -459,6 +495,41 @@ export const rooms = {
     return local
       .listLocalRooms()
       .filter((r) => r.phase === "lobby" && !r.closed && r.createdAt > cutoff)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  },
+
+  /** Ongoing trials — rooms currently in prosecutor_turn / defendant_turn /
+   * jury_voting / case_intro phases. Spectators join these without taking
+   * a counsel slot. */
+  async listOngoingTrials(): Promise<Room[]> {
+    const ongoingPhases = [
+      "case_intro",
+      "prosecutor_turn",
+      "defendant_turn",
+      "jury_voting",
+    ];
+    const staleMs = 60 * 60 * 1000; // 1 hour — older trials are likely abandoned
+    const cutoff = new Date(Date.now() - staleMs).toISOString();
+    if (DATA_MODE === "supabase" && supabase) {
+      const { data, error } = await supabase
+        .from("rooms")
+        .select("*")
+        .eq("closed", false)
+        .in("phase", ongoingPhases)
+        .gt("created_at", cutoff)
+        .order("created_at", { ascending: false })
+        .limit(20);
+      if (error) throw error;
+      return (data as RoomRow[]).map(rowToRoom);
+    }
+    return local
+      .listLocalRooms()
+      .filter(
+        (r) =>
+          !r.closed &&
+          ongoingPhases.includes(r.phase) &&
+          r.createdAt > cutoff,
+      )
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   },
 };

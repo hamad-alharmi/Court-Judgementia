@@ -20,6 +20,7 @@ create table if not exists public.profiles (
   losses integer not null default 0,
   is_admin boolean not null default false,
   character text,
+  match_history jsonb not null default '[]'::jsonb,
   created_at timestamptz not null default now()
 );
 
@@ -31,6 +32,9 @@ begin
   end if;
   if not exists (select 1 from information_schema.columns where table_schema='public' and table_name='profiles' and column_name='character') then
     alter table public.profiles add column character text;
+  end if;
+  if not exists (select 1 from information_schema.columns where table_schema='public' and table_name='profiles' and column_name='match_history') then
+    alter table public.profiles add column match_history jsonb not null default '[]'::jsonb;
   end if;
 end$$;
 
@@ -103,8 +107,6 @@ alter publication supabase_realtime add table public.profiles;
 alter publication supabase_realtime add table public.rooms;
 
 -- ---------- ADMIN ACCOUNT + DEMO LEADERBOARD SEED ----------
--- Admin: username alrzrii, password vyhghgg46
--- password_hash below = SHA-256("judgementia::vyhghgg46") so login works immediately.
 insert into public.profiles (username, password_hash, elo, rank, cases_tried, convictions, acquittals, judge_favorability, wins, losses, is_admin, character)
 values
   ('alrzrii', '76b128fbc36dfdc6377d16a509baf1752ce8f0704e4fb1d718c1a618f85d5918', 2500, 'Chief Justice Elite', 999, 700, 299, 99, 700, 50, true, 'lawliet')
@@ -113,7 +115,6 @@ on conflict (username) do update set
   character = 'lawliet',
   password_hash = '76b128fbc36dfdc6377d16a509baf1752ce8f0704e4fb1d718c1a618f85d5918';
 
--- Demo leaderboard attorneys. password = "seedpassword" for all (hash below).
 insert into public.profiles (username, password_hash, elo, rank, cases_tried, convictions, acquittals, judge_favorability, wins, losses)
 values
   ('V_Whitcombe', '866b1e4d3b995876ada3a5254ba295a74d30a4a77c0358a62b9bb04fa6eb2b1c', 2380, 'Chief Justice Elite', 412, 261, 151, 78, 261, 151),

@@ -8,12 +8,14 @@ import { CreateRoomModal } from "./CreateRoomModal";
 import { SettingsModal } from "./SettingsModal";
 import { AdminPanel } from "./AdminPanel";
 import { useAuth } from "@/hooks/use-auth";
+import { useSound } from "@/hooks/use-sound";
 import { rooms, DATA_MODE } from "@/lib/api";
 import { generateChamberCode, normalizeCode, isValidChamberCode } from "@/lib/codec";
 import { randomScenarioId } from "@/lib/data/cases";
 import { newRoom } from "@/lib/room";
 import { toast } from "sonner";
 import {
+  Eye,
   Gavel,
   LogIn,
   Plus,
@@ -27,20 +29,37 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { RANKED_STATEMENT_COUNT } from "@/lib/types";
-import type { Room } from "@/lib/types";
+import type { Room, RoomPhase } from "@/lib/types";
+
+// Ongoing trial phase labels for the spectate list.
+const PHASE_LABEL: Record<RoomPhase, string> = {
+  lobby: "Lobby",
+  case_intro: "Briefing",
+  prosecutor_turn: "Prosecution",
+  defendant_turn: "Defense",
+  jury_voting: "Jury",
+  verdict: "Verdict",
+};
 
 export function Matchmaking({ onEnterRoom }: { onEnterRoom: (id: string) => void }) {
   const { profile } = useAuth();
+  const sounds = useSound();
   const [joinCode, setJoinCode] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [lobbies, setLobbies] = useState<Room[]>([]);
+  const [ongoing, setOngoing] = useState<Room[]>([]);
   const [createOpen, setCreateOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [adminOpen, setAdminOpen] = useState(false);
 
   async function refreshLobbies() {
     try {
-      setLobbies(await rooms.listRecentLobbies());
+      const [lobbs, ong] = await Promise.all([
+        rooms.listRecentLobbies(),
+        rooms.listOngoingTrials(),
+      ]);
+      setLobbies(lobbs);
+      setOngoing(ong);
     } catch {
       /* ignore */
     }
@@ -183,7 +202,10 @@ export function Matchmaking({ onEnterRoom }: { onEnterRoom: (id: string) => void
       icon: Plus,
       title: "Create Custom Chamber",
       desc: "Configure statements, AI roles, difficulty, and case theme.",
-      onClick: () => setCreateOpen(true),
+      onClick: () => {
+        sounds.click();
+        setCreateOpen(true);
+      },
       tone: "gold" as const,
       tag: "HOST",
     },
@@ -192,7 +214,10 @@ export function Matchmaking({ onEnterRoom }: { onEnterRoom: (id: string) => void
       icon: LogIn,
       title: "Join Custom Chamber",
       desc: "Punch in an active code to enter a pending trial.",
-      onClick: joinCustom,
+      onClick: () => {
+        sounds.click();
+        joinCustom();
+      },
       tone: "white" as const,
       tag: "CODE",
     },
@@ -201,7 +226,10 @@ export function Matchmaking({ onEnterRoom }: { onEnterRoom: (id: string) => void
       icon: Swords,
       title: "Ranked Matchmaking",
       desc: `Skill-based competitive queue. ${RANKED_STATEMENT_COUNT} statements, AI assist blocked.`,
-      onClick: rankedQueue,
+      onClick: () => {
+        sounds.click();
+        rankedQueue();
+      },
       tone: "crimson" as const,
       tag: "ELO",
     },
@@ -210,7 +238,10 @@ export function Matchmaking({ onEnterRoom }: { onEnterRoom: (id: string) => void
       icon: Cpu,
       title: "Practice vs AI",
       desc: "Solo drill against AI defense counsel. No Elo risk.",
-      onClick: practiceVsAI,
+      onClick: () => {
+        sounds.click();
+        practiceVsAI();
+      },
       tone: "white" as const,
       tag: "SOLO",
     },
@@ -387,7 +418,10 @@ export function Matchmaking({ onEnterRoom }: { onEnterRoom: (id: string) => void
             />
           </div>
           <Button
-            onClick={joinCustom}
+            onClick={() => {
+              sounds.click();
+              joinCustom();
+            }}
             disabled={busy !== null || joinCode.length < 4}
             className="sharp h-14 border border-gold bg-gold px-8 font-mono-terminal text-xs font-bold uppercase tracking-[0.3em] text-black transition hover:bg-gold/85 hover:shadow-[0_0_24px_-4px_var(--gold)] disabled:opacity-30"
           >
@@ -419,6 +453,7 @@ export function Matchmaking({ onEnterRoom }: { onEnterRoom: (id: string) => void
                 type="button"
                 onClick={async () => {
                   if (!profile) return;
+                  sounds.click();
                   setBusy("join");
                   try {
                     if (
@@ -470,6 +505,53 @@ export function Matchmaking({ onEnterRoom }: { onEnterRoom: (id: string) => void
               </button>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Spectate ongoing trials */}
+      {ongoing.length > 0 && (
+        <div className="border-t border-white/10 pt-4">
+          <div className="mb-3 flex items-center gap-2">
+            <Eye className="h-3.5 w-3.5 text-gold" />
+            <span className="font-mono-terminal text-[10px] uppercase tracking-[0.3em] text-white/50">
+              Spectate Live Trials
+            </span>
+            <span className="font-mono-terminal text-[9px] text-white/30">
+              ({ongoing.length} in session)
+            </span>
+          </div>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {ongoing.slice(0, 9).map((r) => (
+              <button
+                key={r.id}
+                type="button"
+                onClick={() => {
+                  if (!profile) return;
+                  sounds.click();
+                  onEnterRoom(r.id);
+                }}
+                className="group sharp flex items-center justify-between gap-3 border border-emerald-500/25 bg-gradient-to-r from-emerald-500/[0.04] to-transparent px-4 py-2.5 transition-all hover:border-emerald-500 hover:shadow-[0_0_18px_-6px_rgba(63,185,138,0.5)]"
+              >
+                <div className="flex min-w-0 items-center gap-3">
+                  <span className="text-glow-gold font-mono-terminal text-base font-black tracking-[0.35em] text-gold">
+                    {r.code}
+                  </span>
+                  <span className="sharp border border-emerald-500/40 bg-emerald-500/5 px-1.5 py-0.5 font-mono-terminal text-[8px] font-bold uppercase tracking-widest text-emerald-400">
+                    {PHASE_LABEL[r.phase] ?? "Live"}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 font-mono-terminal text-[9px] uppercase tracking-widest text-white/40">
+                  <span className="hidden truncate sm:inline">
+                    {r.prosecutorName ?? "—"} v. {r.defendantName ?? "—"}
+                  </span>
+                  <Eye className="h-3.5 w-3.5 -translate-x-1 text-white/40 opacity-0 transition-all duration-200 group-hover:translate-x-0 group-hover:opacity-100 group-hover:text-emerald-400" />
+                </div>
+              </button>
+            ))}
+          </div>
+          <p className="mt-2 font-mono-terminal text-[9px] uppercase tracking-widest text-white/25">
+            Spectators observe without taking a counsel slot.
+          </p>
         </div>
       )}
 
