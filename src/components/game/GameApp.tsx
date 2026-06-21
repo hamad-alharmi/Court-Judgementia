@@ -6,6 +6,7 @@ import { AuthGate } from "./AuthGate";
 import { GavelTransition } from "./GavelTransition";
 import { Dashboard } from "./Dashboard";
 import { Courtroom } from "./Courtroom";
+import { LandingPage } from "./LandingPage";
 import { useAuth } from "@/hooks/use-auth";
 import { rooms } from "@/lib/api";
 import { normalizeCode, isValidChamberCode } from "@/lib/codec";
@@ -24,8 +25,7 @@ export function GameApp() {
   });
 
   const handleLoadingComplete = useCallback(() => {
-    // useAuth hydrates synchronously from localStorage, so profile is ready
-    setPhase(profile ? "dashboard" : "auth");
+    setPhase(profile ? "dashboard" : "landing");
   }, [profile]);
 
   const handleAuthenticated = useCallback((_p: Profile) => {
@@ -103,6 +103,11 @@ export function GameApp() {
   // ----- render -----
   if (phase === "loading" || authLoading) {
     return <LoadingScreen onComplete={handleLoadingComplete} />;
+  }
+
+  if (phase === "landing") {
+    if (profile) return <GavelTransition onDone={handleGavelDone} />;
+    return <LandingPage onGetStarted={() => setPhase("auth")} />;
   }
 
   if (phase === "auth") {

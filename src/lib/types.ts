@@ -168,6 +168,7 @@ export interface Profile {
 
 export type AppPhase =
   | "loading"
+  | "landing"
   | "auth"
   | "gavel-transition"
   | "dashboard"

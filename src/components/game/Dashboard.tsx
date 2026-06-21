@@ -7,6 +7,9 @@ import { ProfileStats } from "./ProfileStats";
 import { AvatarCustomizer } from "./AvatarCustomizer";
 import { Leaderboard } from "./Leaderboard";
 import { Matchmaking } from "./Matchmaking";
+import { MatchHistory } from "./MatchHistory";
+import { Achievements } from "./Achievements";
+import { AdSlot } from "./AdSlot";
 import { useAuth } from "@/hooks/use-auth";
 import { tierInfoForElo } from "@/lib/data/ranks";
 import { LogOut, Scale, TerminalSquare } from "lucide-react";
@@ -161,6 +164,17 @@ export function Dashboard({ onEnterRoom }: { onEnterRoom: (id: string) => void }
             <Leaderboard />
           </motion.div>
         </div>
+
+        {/* Ad slot — only shows if user opted into ads */}
+        <motion.div
+          className="mt-7"
+          variants={sectionVariants}
+          initial="hidden"
+          animate="visible"
+          transition={sectionTransition(0.45)}
+        >
+          <AdSlot slot="dashboard-bottom" label="Sponsored" />
+        </motion.div>
       </main>
 
       {/* ===== FOOTER ===== */}
