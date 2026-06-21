@@ -63,17 +63,14 @@ export function newRoom(opts: NewRoomOpts): Room {
 
 /** Given the current statements + statementCount, determine whose turn is next. */
 export function nextPhaseAfterStatement(
-  statements: { side: "prosecutor" | "defense"; round: number }[],
+  statements: { side: string; round: number }[],
   statementCount: number,
 ): "prosecutor_turn" | "defendant_turn" | "jury_voting" {
-  // find the last statement
   const last = statements[statements.length - 1];
   if (!last) return "prosecutor_turn";
-  if (last.side === "prosecutor") {
-    // defense speaks same round
+  if (last.side === "prosecution") {
     return "defendant_turn";
   }
-  // last was defense → round complete. next round or jury?
   const completedRounds = last.round;
   if (completedRounds >= statementCount) return "jury_voting";
   return "prosecutor_turn";

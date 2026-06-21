@@ -3,6 +3,8 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Toaster as Sonner } from "sonner";
 import { ThemeProvider } from "@/components/game/ThemeProvider";
+import { AdProvider } from "@/lib/ads";
+import { FirstVisitDialog } from "@/components/game/FirstVisitDialog";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -15,20 +17,22 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "JUDGEMENTIA — Cyber Legal Trial Protocol",
+  title: "JUDGEMENTIA — Legal Trial Protocol",
   description:
-    "A real-time multiplayer cyber & corporate legal thriller. Prosecute, defend, object, and face the verdict of Chief Justice Vanguard.",
+    "A real-time multiplayer legal thriller. Prosecute, defend, object, and face the verdict of Chief Justice Vanguard.",
   keywords: [
     "Judgementia",
     "multiplayer legal game",
-    "cyber thriller",
     "courtroom",
+    "trial",
     "AI judge",
     "Elo ranked",
   ],
-  authors: [{ name: "Judgementia Protocol" }],
+  authors: [{ name: "Judgementia" }],
   icons: {
-    icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
+    icon: "/favicon.svg",
+    shortcut: "/favicon.svg",
+    apple: "/favicon.svg",
   },
 };
 
@@ -39,10 +43,22 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
+      <head>
+        <script
+          async
+          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-8823186128402736"
+          crossOrigin="anonymous"
+        />
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground font-mono-terminal`}
       >
-        <ThemeProvider>{children}</ThemeProvider>
+        <ThemeProvider>
+          <AdProvider>
+            {children}
+            <FirstVisitDialog />
+          </AdProvider>
+        </ThemeProvider>
         <Sonner
           position="top-right"
           toastOptions={{

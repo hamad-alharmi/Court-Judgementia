@@ -132,8 +132,15 @@ export function Matchmaking({ onEnterRoom }: { onEnterRoom: (id: string) => void
     if (!profile) return;
     setBusy("ranked");
     try {
-      const open = await rooms.findOpenRankedRoom();
-      if (open && open.prosecutorId !== profile.id) {
+      // Poll for an open ranked room (5 attempts over 5s)
+      let open: Room | null = null;
+      for (let i = 0; i < 5; i++) {
+        open = await rooms.findOpenRankedRoom();
+        if (open && open.prosecutorId !== profile.id) break;
+        open = null;
+        if (i < 4) await new Promise((r) => setTimeout(r, 1000));
+      }
+      if (open) {
         await rooms.update(open.id, {
           defendantId: profile.id,
           defendantName: profile.username,
@@ -255,7 +262,7 @@ export function Matchmaking({ onEnterRoom }: { onEnterRoom: (id: string) => void
           <div>
             <div className="flex items-center gap-2">
               <span className="font-mono-terminal text-[10px] text-gold">04</span>
-              <h2 className="font-mono-terminal text-sm font-bold uppercase tracking-[0.06em] text-white">
+              <h2 className="font-mono-terminal text-sm font-bold uppercase tracking-[0.25em] text-white">
                 Matchmaking Core
               </h2>
             </div>
@@ -334,7 +341,7 @@ export function Matchmaking({ onEnterRoom }: { onEnterRoom: (id: string) => void
                 </div>
                 <span
                   className={cn(
-                    "font-mono-terminal text-[8px] font-bold uppercase tracking-[0.06em] px-1.5 py-0.5 border",
+                    "font-mono-terminal text-[8px] font-bold uppercase tracking-[0.25em] px-1.5 py-0.5 border",
                     a.tone === "gold" && "border-gold/30 text-gold/70",
                     a.tone === "white" && "border-white/15 text-white/40",
                     a.tone === "crimson" && "border-red-500/30 text-red-400/80",
@@ -346,7 +353,7 @@ export function Matchmaking({ onEnterRoom }: { onEnterRoom: (id: string) => void
               <div className="relative z-10">
                 <div
                   className={cn(
-                    "font-mono-terminal text-xs font-bold uppercase tracking-[0.15em] text-white transition-colors",
+                    "font-mono-terminal text-xs font-bold uppercase tracking-[0.4em] text-white transition-colors",
                     a.tone === "gold" && "group-hover:text-gold",
                     a.tone === "crimson" && "group-hover:text-red-400",
                   )}
@@ -373,7 +380,7 @@ export function Matchmaking({ onEnterRoom }: { onEnterRoom: (id: string) => void
                 <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/70">
                   <div className="flex items-center gap-2">
                     <span className="h-2 w-2 animate-blink bg-gold" />
-                    <span className="font-mono-terminal text-[10px] uppercase tracking-[0.08em] text-gold">
+                    <span className="font-mono-terminal text-[10px] uppercase tracking-[0.3em] text-gold">
                       Connecting
                     </span>
                   </div>
@@ -398,7 +405,7 @@ export function Matchmaking({ onEnterRoom }: { onEnterRoom: (id: string) => void
         </div>
         <div className="relative z-10 flex flex-col items-center gap-2 text-center">
           <KeyRound className="h-5 w-5 text-gold" />
-          <label className="font-mono-terminal text-[10px] uppercase tracking-[0.1em] text-gold/80">
+          <label className="font-mono-terminal text-[10px] uppercase tracking-[0.35em] text-gold/80">
             Enter Chamber Code
           </label>
           <p className="font-mono-terminal text-[9px] uppercase tracking-widest text-white/30">
@@ -423,13 +430,13 @@ export function Matchmaking({ onEnterRoom }: { onEnterRoom: (id: string) => void
               joinCustom();
             }}
             disabled={busy !== null || joinCode.length < 4}
-            className="sharp h-14 border border-gold bg-gold px-8 font-mono-terminal text-xs font-bold uppercase tracking-[0.08em] text-black transition hover:bg-gold/85 hover:shadow-[0_0_24px_-4px_var(--gold)] disabled:opacity-30"
+            className="sharp h-14 border border-gold bg-gold px-8 font-mono-terminal text-xs font-bold uppercase tracking-[0.3em] text-black transition hover:bg-gold/85 hover:shadow-[0_0_24px_-4px_var(--gold)] disabled:opacity-30"
           >
             <LogIn className="h-4 w-4" />
             Enter
           </Button>
         </div>
-        <p className="relative z-10 text-center font-mono-terminal text-[9px] uppercase tracking-[0.04em] text-white/25">
+        <p className="relative z-10 text-center font-mono-terminal text-[9px] uppercase tracking-[0.2em] text-white/25">
           ▸ Press <span className="text-gold/70">ENTER</span> to file
         </p>
       </div>
@@ -439,7 +446,7 @@ export function Matchmaking({ onEnterRoom }: { onEnterRoom: (id: string) => void
         <div className="border-t border-white/10 pt-4">
           <div className="mb-3 flex items-center gap-2">
             <Gavel className="h-3.5 w-3.5 text-gold" />
-            <span className="font-mono-terminal text-[10px] uppercase tracking-[0.08em] text-white/50">
+            <span className="font-mono-terminal text-[10px] uppercase tracking-[0.3em] text-white/50">
               Open Chambers
             </span>
             <span className="font-mono-terminal text-[9px] text-white/30">
@@ -487,7 +494,7 @@ export function Matchmaking({ onEnterRoom }: { onEnterRoom: (id: string) => void
                 )}
               >
                 <div className="flex items-center gap-3">
-                  <span className="text-glow-gold font-mono-terminal text-base font-black tracking-[0.1em] text-gold">
+                  <span className="text-glow-gold font-mono-terminal text-base font-black tracking-[0.35em] text-gold">
                     {r.code}
                   </span>
                   <span
@@ -513,7 +520,7 @@ export function Matchmaking({ onEnterRoom }: { onEnterRoom: (id: string) => void
         <div className="border-t border-white/10 pt-4">
           <div className="mb-3 flex items-center gap-2">
             <Eye className="h-3.5 w-3.5 text-gold" />
-            <span className="font-mono-terminal text-[10px] uppercase tracking-[0.08em] text-white/50">
+            <span className="font-mono-terminal text-[10px] uppercase tracking-[0.3em] text-white/50">
               Spectate Live Trials
             </span>
             <span className="font-mono-terminal text-[9px] text-white/30">
@@ -533,7 +540,7 @@ export function Matchmaking({ onEnterRoom }: { onEnterRoom: (id: string) => void
                 className="group sharp flex items-center justify-between gap-3 border border-emerald-500/25 bg-gradient-to-r from-emerald-500/[0.04] to-transparent px-4 py-2.5 transition-all hover:border-emerald-500 hover:shadow-[0_0_18px_-6px_rgba(63,185,138,0.5)]"
               >
                 <div className="flex min-w-0 items-center gap-3">
-                  <span className="text-glow-gold font-mono-terminal text-base font-black tracking-[0.1em] text-gold">
+                  <span className="text-glow-gold font-mono-terminal text-base font-black tracking-[0.35em] text-gold">
                     {r.code}
                   </span>
                   <span className="sharp border border-emerald-500/40 bg-emerald-500/5 px-1.5 py-0.5 font-mono-terminal text-[8px] font-bold uppercase tracking-widest text-emerald-400">
@@ -555,7 +562,7 @@ export function Matchmaking({ onEnterRoom }: { onEnterRoom: (id: string) => void
         </div>
       )}
 
-      <p className="font-mono-terminal text-[9px] uppercase tracking-[0.04em] text-white/25">
+      <p className="font-mono-terminal text-[9px] uppercase tracking-[0.2em] text-white/25">
         Data layer:{" "}
         <span
           className={cn(

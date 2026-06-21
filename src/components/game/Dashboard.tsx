@@ -76,7 +76,7 @@ export function Dashboard({ onEnterRoom }: { onEnterRoom: (id: string) => void }
                 <span className="hidden h-3.5 w-px bg-gold/30 sm:block" />
                 <TerminalSquare className="hidden h-3.5 w-3.5 text-gold/60 sm:block" />
               </div>
-              <p className="font-mono-terminal text-[8px] uppercase tracking-[0.15em] text-white/30 sm:text-[9px]">
+              <p className="font-mono-terminal text-[8px] uppercase tracking-[0.4em] text-white/30 sm:text-[9px]">
                 Command Terminal · v2.4
               </p>
             </div>
@@ -180,10 +180,10 @@ export function Dashboard({ onEnterRoom }: { onEnterRoom: (id: string) => void }
       {/* ===== FOOTER ===== */}
       <footer className="header-gradient-bar relative z-10 mt-auto border-t border-white/10 bg-black px-4 py-4">
         <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-2 sm:flex-row">
-          <div className="font-mono-terminal text-[9px] uppercase tracking-[0.08em] text-white/30">
+          <div className="font-mono-terminal text-[9px] uppercase tracking-[0.3em] text-white/30">
             JUDGEMENTIA · Cyber Legal Trial Protocol
           </div>
-          <div className="flex items-center gap-2 font-mono-terminal text-[9px] uppercase tracking-[0.04em] text-white/25">
+          <div className="flex items-center gap-2 font-mono-terminal text-[9px] uppercase tracking-[0.2em] text-white/25">
             <span className="h-1 w-1 animate-blink bg-gold" />
             Chief Justice Vanguard presiding
           </div>

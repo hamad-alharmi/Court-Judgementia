@@ -67,7 +67,7 @@ export function Achievements() {
               <div className="relative">
                 <div
                   className={cn(
-                    "font-mono-terminal text-[10px] font-bold uppercase tracking-[0.15em]",
+                    "font-mono-terminal text-[10px] font-bold uppercase tracking-[0.4em]",
                     unlocked ? "text-gold" : "text-white/45",
                   )}
                 >

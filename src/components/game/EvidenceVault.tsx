@@ -71,7 +71,7 @@ export function EvidenceVault({
       <div className="flex items-center justify-between border-b border-white/10 pb-3">
         <div className="flex items-center gap-2">
           <FolderLock className="h-4 w-4 text-gold" />
-          <h2 className="font-mono-terminal text-xs font-bold uppercase tracking-[0.06em] text-white">
+          <h2 className="font-mono-terminal text-xs font-bold uppercase tracking-[0.25em] text-white">
             Evidence Vault
           </h2>
         </div>
@@ -197,7 +197,7 @@ function EvidenceCard({
                   type="button"
                   onClick={onPresent}
                   className={cn(
-                    "sharp group mt-3 h-9 w-full border font-mono-terminal text-[10px] font-bold uppercase tracking-[0.06em] transition-all",
+                    "sharp group mt-3 h-9 w-full border font-mono-terminal text-[10px] font-bold uppercase tracking-[0.25em] transition-all",
                     presented
                       ? "border-gold/40 bg-transparent text-gold/80 hover:border-gold hover:bg-gold/10 hover:shadow-[0_0_18px_-6px_var(--gold)]"
                       : "border-gold bg-transparent text-gold hover:bg-gold hover:text-black hover:shadow-[0_0_24px_-4px_var(--gold)]",

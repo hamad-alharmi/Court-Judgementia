@@ -111,8 +111,8 @@ export interface GameState {
   verdict: JudgeVerdict | null;
   /** guards against double Elo application across clients */
   eloApplied?: boolean;
-  /** active objection being evaluated (transient) */
   pendingObjection?: Objection | null;
+  _scenario?: CaseScenario;
 }
 
 export interface Room {

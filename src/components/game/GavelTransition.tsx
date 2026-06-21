@@ -25,7 +25,7 @@ export function GavelTransition({ onDone }: { onDone: () => void }) {
           <div className="text-glow-gold text-gold text-xl font-bold uppercase tracking-[0.5em] sm:text-3xl">
             Court Adjourned
           </div>
-          <div className="mt-2 text-[10px] uppercase tracking-[0.15em] text-white/40">
+          <div className="mt-2 text-[10px] uppercase tracking-[0.4em] text-white/40">
             Entering the Chamber
           </div>
         </div>

@@ -40,7 +40,7 @@ export function FirstVisitDialog() {
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent className="sharp max-w-md gap-0 border-gold/30 bg-black p-0 font-mono-terminal">
         <DialogHeader className="border-b border-white/10 px-6 py-4">
-          <DialogTitle className="flex items-center gap-2 text-sm font-bold uppercase tracking-[0.06em] text-white">
+          <DialogTitle className="flex items-center gap-2 text-sm font-bold uppercase tracking-[0.25em] text-white">
             <Heart className="h-4 w-4 text-gold" />
             Quick Question
           </DialogTitle>
@@ -60,7 +60,7 @@ export function FirstVisitDialog() {
           <div className="flex flex-col gap-2 border-t border-white/10 pt-4">
             <Button
               onClick={() => choose("yes")}
-              className="sharp h-11 border border-gold bg-gold font-mono-terminal text-xs font-bold uppercase tracking-[0.06em] text-black hover:bg-gold/85"
+              className="sharp h-11 border border-gold bg-gold font-mono-terminal text-xs font-bold uppercase tracking-[0.25em] text-black hover:bg-gold/85"
             >
               <Heart className="h-4 w-4" />
               Sure, Keep Ads
@@ -68,7 +68,7 @@ export function FirstVisitDialog() {
             <Button
               onClick={() => choose("no")}
               variant="ghost"
-              className="sharp h-10 border border-white/20 font-mono-terminal text-xs uppercase tracking-[0.04em] text-white/50 hover:text-white"
+              className="sharp h-10 border border-white/20 font-mono-terminal text-xs uppercase tracking-[0.2em] text-white/50 hover:text-white"
             >
               <X className="h-4 w-4" />
               No Thanks

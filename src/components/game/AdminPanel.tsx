@@ -73,7 +73,7 @@ export function AdminPanel({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sharp max-h-[85vh] gap-0 border-white/15 bg-black p-0 font-mono-terminal">
         <DialogHeader className="border-b border-white/10 px-5 py-4">
-          <DialogTitle className="flex items-center gap-2 text-sm font-bold uppercase tracking-[0.04em] text-white">
+          <DialogTitle className="flex items-center gap-2 text-sm font-bold uppercase tracking-[0.2em] text-white">
             <ShieldAlert className="h-4 w-4 text-gold" />
             Admin Panel — Bench Authority
           </DialogTitle>

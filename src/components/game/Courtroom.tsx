@@ -30,6 +30,7 @@ import {
   CHAR_LIMIT,
   OBJECTIONS_PER_SIDE,
   RANKED_STATEMENT_COUNT,
+  CASE_THEME_PRESETS,
 } from "@/lib/types";
 import type {
   CaseScenario,
@@ -100,7 +101,12 @@ export function Courtroom({
   // merge generated scenario with room's scenarioId
   const scenario = useMemo(() => {
     if (generatedScenario) return generatedScenario;
-    return room ? getScenarioById(room.scenarioId) : undefined;
+    if (room) {
+      const gs = (room.gameState as GameState & { _scenario?: CaseScenario })._scenario;
+      if (gs) return gs;
+      return getScenarioById(room.scenarioId);
+    }
+    return undefined;
   }, [room, generatedScenario]);
 
   const isHost = !!room && !!profile && room.hostId === profile.id;
@@ -296,11 +302,11 @@ export function Courtroom({
   }, [room?.phase, isHost, room]);
 
   // ===== AI CASE GENERATION (host owns, on trial start) =====
-  async function generateCase(): Promise<CaseScenario | null> {
+  async function generateCase(overrideTheme?: string): Promise<CaseScenario | null> {
     if (!room) return null;
     setGenLoading(true);
     try {
-      const theme = room.caseTheme || "cyber";
+      const theme = overrideTheme || room.caseTheme || "murder mystery";
       const res = await fetch("/api/generate-case", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -310,8 +316,16 @@ export function Courtroom({
       const data = await res.json();
       const sc = data.scenario as CaseScenario;
       setGeneratedScenario(sc);
-      // persist scenarioId so the other client fetches the same scenario
-      await update({ scenarioId: sc.id });
+      // Store full scenario in gameState so non-host gets the same case
+      const fresh = await rooms.get(roomId);
+      if (fresh) {
+        await update({
+          scenarioId: sc.id,
+          gameState: { ...fresh.gameState, _scenario: sc } as GameState,
+        });
+      } else {
+        await update({ scenarioId: sc.id });
+      }
       return sc;
     } catch (e) {
       console.error("case gen failed", e);
@@ -349,7 +363,7 @@ export function Courtroom({
       const key = `submit-${room.phase}-${room.gameState.currentRound}`;
       if (doneRef.current.has(key)) return;
       doneRef.current.add(key);
-      const side = room.phase === "prosecutor_turn" ? "prosecutor" : "defense";
+      const side = room.phase === "prosecutor_turn" ? "prosecution" : "defense";
       const stmt: Statement = {
         id: "stmt-" + Math.random().toString(36).slice(2, 10),
         round: room.gameState.currentRound,
@@ -401,7 +415,7 @@ export function Courtroom({
     const key = `ai-${room.phase}-${room.gameState.currentRound}`;
     if (doneRef.current.has(key)) return;
     doneRef.current.add(key);
-    const side = room.phase === "prosecutor_turn" ? "prosecutor" : "defense";
+    const side = room.phase === "prosecutor_turn" ? "prosecution" : "defense";
     const argText = generateAIArgument(
       side,
       scenario,
@@ -788,14 +802,17 @@ export function Courtroom({
       return;
     }
     doneRef.current.clear();
-    let sc = scenario;
-    if (!sc) {
-      sc = await generateCase();
-    }
-    // go to case_intro first (shows briefing + Lawliet entrance for admin)
+    // Set phase to case_intro FIRST so both players see the transition immediately
     await update({
       phase: "case_intro",
+      closed: true,
     });
+    // Ranked: always generate a fresh AI case with a random theme
+    if (room.matchmakingType === "ranked") {
+      const themes = CASE_THEME_PRESETS as readonly string[];
+      const randomTheme = themes[Math.floor(Math.random() * themes.length)];
+      await generateCase(randomTheme);
+    }
   }
 
   function beginTrialFromIntro() {
@@ -833,7 +850,7 @@ export function Courtroom({
             className="absolute -inset-3 -z-10 rounded-full bg-gold/20 blur-xl"
           />
         </div>
-        <div className="font-mono-terminal text-sm uppercase tracking-[0.08em] text-gold/70">
+        <div className="font-mono-terminal text-sm uppercase tracking-[0.3em] text-gold/70">
           Convening chamber
         </div>
         <div className="flex items-center gap-1.5">
@@ -960,7 +977,7 @@ export function Courtroom({
                   }}
                   className="animate-red-pulse sharp group flex items-center justify-between border border-red-500/60 bg-red-500/[0.07] px-4 py-3 transition hover:bg-red-500/20"
                 >
-                  <span className="flex items-center gap-2.5 font-mono-terminal text-xs font-bold uppercase tracking-[0.06em] text-red-400">
+                  <span className="flex items-center gap-2.5 font-mono-terminal text-xs font-bold uppercase tracking-[0.25em] text-red-400">
                     <Siren className="h-4 w-4 animate-pulse" />
                     Raise Objection
                     <span className="hidden font-mono-terminal text-[9px] font-normal tracking-widest text-white/40 sm:inline">
@@ -1016,7 +1033,7 @@ export function Courtroom({
       </main>
 
       <footer className="header-gradient-bar mt-auto border-t border-white/10 bg-black px-4 py-3">
-        <div className="mx-auto flex max-w-[1600px] items-center justify-between font-mono-terminal text-[9px] uppercase tracking-[0.04em] text-white/25">
+        <div className="mx-auto flex max-w-[1600px] items-center justify-between font-mono-terminal text-[9px] uppercase tracking-[0.2em] text-white/25">
           <span className="flex items-center gap-2">
             <span className="h-1 w-1 animate-blink bg-gold" />
             Chamber {room.code} · {room.matchmakingType} · {room.statementCount} stmts/side
@@ -1098,12 +1115,12 @@ function CourtHeader({
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <div className="text-glow-gold font-mono-terminal text-sm font-bold uppercase tracking-[0.06em] text-white">
+                <div className="text-glow-gold font-mono-terminal text-sm font-bold uppercase tracking-[0.25em] text-white">
                   Chamber {room.code}
                 </div>
                 <ConnectionIndicator />
               </div>
-              <div className="font-mono-terminal text-[8px] uppercase tracking-[0.08em] text-white/40">
+              <div className="font-mono-terminal text-[8px] uppercase tracking-[0.3em] text-white/40">
                 {room.matchmakingType === "ranked" ? "Ranked · AI assist blocked" : "Casual"} · {room.statementCount}×{room.aiDifficulty}
               </div>
             </div>
@@ -1215,7 +1232,7 @@ function TrialHeader({
   return (
     <div className="flex flex-col gap-3 border-b border-white/10 pb-4">
       <div>
-        <div className="flex items-center gap-2 font-mono-terminal text-[9px] uppercase tracking-[0.08em] text-gold">
+        <div className="flex items-center gap-2 font-mono-terminal text-[9px] uppercase tracking-[0.3em] text-gold">
           <span className="h-1 w-1 animate-blink bg-gold" />
           Case File
           <span className="text-white/30">· {scenario.id ?? "—"}</span>
@@ -1287,7 +1304,7 @@ function CounselCard({
       <div className="min-w-0 flex-1">
         <div
           className={cn(
-            "flex items-center gap-1.5 font-mono-terminal text-[9px] font-bold uppercase tracking-[0.06em]",
+            "flex items-center gap-1.5 font-mono-terminal text-[9px] font-bold uppercase tracking-[0.25em]",
             isP ? "text-red-400" : "text-emerald-400",
           )}
         >
@@ -1431,7 +1448,7 @@ function StatementTimeline({
           }}
         />
         <ScrollText className="relative h-9 w-9 animate-float-soft text-gold/50" />
-        <p className="relative font-mono-terminal text-[11px] font-bold uppercase tracking-[0.04em] text-white/55">
+        <p className="relative font-mono-terminal text-[11px] font-bold uppercase tracking-[0.2em] text-white/55">
           Waiting for opening statements.
         </p>
         <p className="relative font-mono-terminal text-[9px] uppercase tracking-widest text-white/30">
@@ -1491,7 +1508,7 @@ function StatementBlock({
         <div className="flex items-center gap-2">
           <span
             className={cn(
-              "font-mono-terminal text-[9px] font-bold uppercase tracking-[0.06em]",
+              "font-mono-terminal text-[9px] font-bold uppercase tracking-[0.25em]",
               isP ? "text-red-400" : "text-emerald-400",
             )}
           >
@@ -1607,7 +1624,7 @@ function ArgumentInput({
         <div className="flex items-center gap-2">
           <span
             className={cn(
-              "font-mono-terminal text-[10px] font-bold uppercase tracking-[0.06em]",
+              "font-mono-terminal text-[10px] font-bold uppercase tracking-[0.25em]",
               isP ? "text-red-400" : "text-emerald-400",
             )}
           >
@@ -1688,7 +1705,7 @@ function ArgumentInput({
           onClick={onSubmit}
           disabled={disabled}
           className={cn(
-            "sharp group flex h-11 items-center gap-2 border px-6 font-mono-terminal text-xs font-bold uppercase tracking-[0.06em] transition-all hover:shadow-[0_0_24px_-6px_var(--gold)]",
+            "sharp group flex h-11 items-center gap-2 border px-6 font-mono-terminal text-xs font-bold uppercase tracking-[0.25em] transition-all hover:shadow-[0_0_24px_-6px_var(--gold)]",
             isP
               ? "border-red-500 bg-red-500/15 text-red-300 hover:bg-red-500 hover:text-black hover:shadow-[0_0_24px_-6px_rgba(224,82,74,0.7)]"
               : "border-emerald-500 bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500 hover:text-black hover:shadow-[0_0_24px_-6px_rgba(63,185,138,0.7)]",
@@ -1718,7 +1735,7 @@ function WaitingPanel({
       {room.phase === "jury_voting" ? (
         <>
           <Users className="h-10 w-10 animate-pulse text-gold" />
-          <p className="text-glow-gold font-mono-terminal text-sm font-bold uppercase tracking-[0.04em] text-gold">
+          <p className="text-glow-gold font-mono-terminal text-sm font-bold uppercase tracking-[0.2em] text-gold">
             The jury of five is deliberating...
           </p>
           <div className="mt-2 h-2 w-48 animate-barber-pole border border-gold/30" />
@@ -1779,7 +1796,7 @@ function LobbyView({
     <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[65fr_35fr]">
       <section className="premium-card sharp flex flex-col gap-5 p-5 sm:p-6">
         <div className="border-b border-white/10 pb-4">
-          <div className="flex items-center gap-2 font-mono-terminal text-[9px] uppercase tracking-[0.08em] text-gold">
+          <div className="flex items-center gap-2 font-mono-terminal text-[9px] uppercase tracking-[0.3em] text-gold">
             <span className="h-1 w-1 animate-blink bg-gold" />
             Pre-Trial Lobby
           </div>
@@ -1826,11 +1843,11 @@ function LobbyView({
           <div className="flex flex-col gap-3 border-t border-white/10 pt-4">
             {isRanked ? (
               <div className="sharp flex flex-col gap-2 border border-gold/40 bg-gold/[0.03] p-3">
-                <div className="font-mono-terminal text-[9px] uppercase tracking-[0.06em] text-gold">
+                <div className="font-mono-terminal text-[9px] uppercase tracking-[0.25em] text-gold">
                   Chamber Code · share with opponent
                 </div>
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-glow-gold font-mono-terminal text-2xl font-black tracking-[0.15em] text-gold">
+                  <span className="text-glow-gold font-mono-terminal text-2xl font-black tracking-[0.4em] text-gold">
                     {room.code}
                   </span>
                   <Button
@@ -1881,7 +1898,7 @@ function LobbyView({
               onClick={onStart}
               disabled={!ready}
               className={cn(
-                "sharp group flex h-12 items-center gap-2 border border-gold bg-gold font-mono-terminal text-sm font-bold uppercase tracking-[0.08em] text-black transition hover:bg-gold/85 hover:shadow-[0_0_28px_-6px_var(--gold)] disabled:opacity-30 disabled:hover:shadow-none",
+                "sharp group flex h-12 items-center gap-2 border border-gold bg-gold font-mono-terminal text-sm font-bold uppercase tracking-[0.3em] text-black transition hover:bg-gold/85 hover:shadow-[0_0_28px_-6px_var(--gold)] disabled:opacity-30 disabled:hover:shadow-none",
                 ready && "animate-pulse-gold",
               )}
             >
@@ -1900,10 +1917,10 @@ function LobbyView({
           <div className="flex flex-col items-center gap-3 border-t border-white/10 pt-6">
             {isRanked ? (
               <>
-                <div className="text-glow-gold font-mono-terminal text-2xl font-black tracking-[0.15em] text-gold">
+                <div className="text-glow-gold font-mono-terminal text-2xl font-black tracking-[0.4em] text-gold">
                   {room.code}
                 </div>
-                <p className="font-mono-terminal text-[10px] uppercase tracking-[0.06em] text-white/40">
+                <p className="font-mono-terminal text-[10px] uppercase tracking-[0.25em] text-white/40">
                   Chamber Code
                 </p>
                 {waitingForOpponent ? (
@@ -1979,7 +1996,7 @@ function RoleSlot({
       <div className="flex items-center justify-between">
         <span
           className={cn(
-            "flex items-center gap-1.5 font-mono-terminal text-[9px] font-bold uppercase tracking-[0.06em]",
+            "flex items-center gap-1.5 font-mono-terminal text-[9px] font-bold uppercase tracking-[0.25em]",
             isP ? "text-red-400" : "text-emerald-400",
           )}
         >
@@ -2089,7 +2106,7 @@ function VerdictView({
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.1 }}
-          className="flex items-center justify-center gap-2 font-mono-terminal text-[10px] uppercase tracking-[0.15em] text-white/45"
+          className="flex items-center justify-center gap-2 font-mono-terminal text-[10px] uppercase tracking-[0.4em] text-white/45"
         >
           <span className="h-1 w-1 animate-blink bg-gold" />
           Chief Justice Vanguard renders decree
@@ -2100,7 +2117,7 @@ function VerdictView({
           animate={{ scale: 1, opacity: 1, filter: "blur(0px)" }}
           transition={{ duration: 0.7, type: "spring", bounce: 0.35, delay: 0.2 }}
           className={cn(
-            "mt-5 font-mono-terminal text-5xl font-black uppercase tracking-[0.15em] sm:text-7xl",
+            "mt-5 font-mono-terminal text-5xl font-black uppercase tracking-[0.4em] sm:text-7xl",
           )}
           style={{
             color: accentColor,
@@ -2114,7 +2131,7 @@ function VerdictView({
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.5 }}
-          className="mt-3 font-mono-terminal text-[11px] uppercase tracking-[0.08em] text-white/40"
+          className="mt-3 font-mono-terminal text-[11px] uppercase tracking-[0.3em] text-white/40"
         >
           {scenario.title}
         </motion.div>
@@ -2125,7 +2142,7 @@ function VerdictView({
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, delay: 0.7 }}
             className={cn(
-              "sharp mt-5 inline-flex items-center gap-2 border px-5 py-2 font-mono-terminal text-xs font-bold uppercase tracking-[0.08em]",
+              "sharp mt-5 inline-flex items-center gap-2 border px-5 py-2 font-mono-terminal text-xs font-bold uppercase tracking-[0.3em]",
               iWon
                 ? "border-gold bg-gold/10 text-gold"
                 : "border-white/30 text-white/50",
@@ -2189,7 +2206,7 @@ function VerdictView({
           <Button
             onClick={onRematch}
             disabled={rematching}
-            className="sharp h-12 border border-gold bg-gold px-8 font-mono-terminal text-xs font-bold uppercase tracking-[0.08em] text-black transition hover:bg-gold/85 hover:shadow-[0_0_24px_-6px_var(--gold)] disabled:opacity-50"
+            className="sharp h-12 border border-gold bg-gold px-8 font-mono-terminal text-xs font-bold uppercase tracking-[0.3em] text-black transition hover:bg-gold/85 hover:shadow-[0_0_24px_-6px_var(--gold)] disabled:opacity-50"
           >
             {rematching ? (
               <>
@@ -2207,7 +2224,7 @@ function VerdictView({
         <Button
           onClick={onLeave}
           variant="ghost"
-          className="sharp h-12 border border-white/20 px-8 font-mono-terminal text-xs font-bold uppercase tracking-[0.08em] text-white/70 transition hover:text-white hover:border-white/50"
+          className="sharp h-12 border border-white/20 px-8 font-mono-terminal text-xs font-bold uppercase tracking-[0.3em] text-white/70 transition hover:text-white hover:border-white/50"
         >
           Return to Terminal
         </Button>
@@ -2231,7 +2248,7 @@ function VerdictSection({
         <div className="flex h-7 w-7 items-center justify-center border border-gold/40 bg-gold/10">
           <Icon className="h-3.5 w-3.5 text-gold" />
         </div>
-        <span className="font-mono-terminal text-[10px] font-bold uppercase tracking-[0.08em] text-gold">
+        <span className="font-mono-terminal text-[10px] font-bold uppercase tracking-[0.3em] text-gold">
           {label}
         </span>
       </div>
