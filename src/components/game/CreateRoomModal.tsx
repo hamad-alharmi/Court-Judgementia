@@ -93,7 +93,7 @@ export function CreateRoomModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sharp max-w-lg gap-0 border-white/15 bg-black p-0 font-mono-terminal">
         <DialogHeader className="border-b border-white/10 px-5 py-4">
-          <DialogTitle className="flex items-center gap-2 text-sm font-bold uppercase tracking-[0.2em] text-white">
+          <DialogTitle className="flex items-center gap-2 text-sm font-bold uppercase tracking-[0.04em] text-white">
             <Plus className="h-4 w-4 text-gold" />
             Create Custom Chamber
           </DialogTitle>
@@ -102,7 +102,7 @@ export function CreateRoomModal({
         <div className="flex flex-col gap-5 p-5">
           {/* Case theme */}
           <div>
-            <label className="mb-2 block font-mono-terminal text-[10px] uppercase tracking-[0.25em] text-white/50">
+            <label className="mb-2 block font-mono-terminal text-[10px] uppercase tracking-[0.06em] text-white/50">
               Case Theme
             </label>
             <Input
@@ -138,7 +138,7 @@ export function CreateRoomModal({
 
           {/* Statement count */}
           <div>
-            <label className="mb-2 block font-mono-terminal text-[10px] uppercase tracking-[0.25em] text-white/50">
+            <label className="mb-2 block font-mono-terminal text-[10px] uppercase tracking-[0.06em] text-white/50">
               Statements per side
             </label>
             <div className="grid grid-cols-6 gap-1.5">
@@ -165,7 +165,7 @@ export function CreateRoomModal({
 
           {/* AI roles */}
           <div>
-            <label className="mb-2 block font-mono-terminal text-[10px] uppercase tracking-[0.25em] text-white/50">
+            <label className="mb-2 block font-mono-terminal text-[10px] uppercase tracking-[0.06em] text-white/50">
               Fill roles with AI
             </label>
             <div className="grid grid-cols-2 gap-2">
@@ -196,7 +196,7 @@ export function CreateRoomModal({
 
           {/* AI difficulty */}
           <div>
-            <label className="mb-2 block font-mono-terminal text-[10px] uppercase tracking-[0.25em] text-white/50">
+            <label className="mb-2 block font-mono-terminal text-[10px] uppercase tracking-[0.06em] text-white/50">
               AI Difficulty
             </label>
             <div className="grid grid-cols-3 gap-1.5">
@@ -229,7 +229,7 @@ export function CreateRoomModal({
               createRoom();
             }}
             disabled={generating}
-            className="sharp h-11 w-full border border-gold bg-gold font-mono-terminal text-xs font-bold uppercase tracking-[0.25em] text-black hover:bg-gold/85"
+            className="sharp h-11 w-full border border-gold bg-gold font-mono-terminal text-xs font-bold uppercase tracking-[0.06em] text-black hover:bg-gold/85"
           >
             {generating ? (
               <>

@@ -70,7 +70,7 @@ export function ProfileStats() {
                 )}
               >
                 <div className="flex items-center justify-between">
-                  <span className="font-mono-terminal text-[9px] uppercase tracking-[0.2em] text-white/45">
+                  <span className="font-mono-terminal text-[9px] uppercase tracking-[0.04em] text-white/45">
                     {s.label}
                   </span>
                   <Icon
@@ -95,7 +95,7 @@ export function ProfileStats() {
           <div className="mb-2.5 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <span className="h-1 w-1 animate-blink bg-gold" />
-              <span className="font-mono-terminal text-[10px] uppercase tracking-[0.25em] text-white/55">
+              <span className="font-mono-terminal text-[10px] uppercase tracking-[0.06em] text-white/55">
                 Rank Progress
               </span>
             </div>
@@ -148,7 +148,7 @@ export function ProfileStats() {
           <div className="mb-2.5 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Gavel className="h-3.5 w-3.5 text-gold" />
-              <span className="font-mono-terminal text-[10px] uppercase tracking-[0.25em] text-white/55">
+              <span className="font-mono-terminal text-[10px] uppercase tracking-[0.06em] text-white/55">
                 Chief Justice Vanguard — Favorability
               </span>
             </div>

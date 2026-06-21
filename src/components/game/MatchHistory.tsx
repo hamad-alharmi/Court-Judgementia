@@ -141,7 +141,7 @@ export function MatchHistory() {
             }}
           />
           <ScrollText className="relative h-9 w-9 animate-float-soft text-gold/50" />
-          <p className="relative font-mono-terminal text-[11px] font-bold uppercase tracking-[0.2em] text-white/55">
+          <p className="relative font-mono-terminal text-[11px] font-bold uppercase tracking-[0.04em] text-white/55">
             No cases tried yet.
           </p>
           <p className="relative font-mono-terminal text-[9px] uppercase tracking-widest text-white/30">

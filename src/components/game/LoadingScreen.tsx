@@ -53,7 +53,7 @@ export function LoadingScreen({ onComplete }: { onComplete: () => void }) {
         </div>
 
         <div className="flex flex-col items-center gap-2 text-center">
-          <h1 className="text-glow-gold text-gold font-mono-terminal text-2xl font-bold tracking-[0.4em] sm:text-4xl">
+          <h1 className="text-glow-gold text-gold font-mono-terminal text-2xl font-bold tracking-[0.15em] sm:text-4xl">
             JUDGEMENTIA
           </h1>
           <p className="font-mono-terminal text-[10px] uppercase tracking-[0.5em] text-white/50 sm:text-xs">

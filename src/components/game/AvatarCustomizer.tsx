@@ -73,7 +73,7 @@ export function AvatarCustomizer() {
         {/* controls */}
         <div className="flex flex-1 flex-col gap-4">
           <div>
-            <Label className="mb-2 block font-mono-terminal text-[10px] uppercase tracking-[0.25em] text-white/50">
+            <Label className="mb-2 block font-mono-terminal text-[10px] uppercase tracking-[0.06em] text-white/50">
               Archetype
             </Label>
             <div className="grid grid-cols-5 gap-1.5">
@@ -96,7 +96,7 @@ export function AvatarCustomizer() {
           </div>
 
           <div>
-            <Label className="mb-2 block font-mono-terminal text-[10px] uppercase tracking-[0.25em] text-white/50">
+            <Label className="mb-2 block font-mono-terminal text-[10px] uppercase tracking-[0.06em] text-white/50">
               Accent
             </Label>
             <div className="flex flex-wrap gap-2">
@@ -121,7 +121,7 @@ export function AvatarCustomizer() {
           </div>
 
           <div>
-            <Label className="mb-2 block font-mono-terminal text-[10px] uppercase tracking-[0.25em] text-white/50">
+            <Label className="mb-2 block font-mono-terminal text-[10px] uppercase tracking-[0.06em] text-white/50">
               Legal Motto
             </Label>
             <Input
@@ -149,7 +149,7 @@ export function AvatarCustomizer() {
       <Button
         onClick={save}
         disabled={!dirty || saving}
-        className="sharp h-10 border border-gold bg-transparent font-mono-terminal text-xs font-bold uppercase tracking-[0.25em] text-gold hover:bg-gold hover:text-black disabled:opacity-30"
+        className="sharp h-10 border border-gold bg-transparent font-mono-terminal text-xs font-bold uppercase tracking-[0.06em] text-gold hover:bg-gold hover:text-black disabled:opacity-30"
       >
         {saving ? "Committing..." : "Commit Matrix"}
       </Button>
@@ -170,7 +170,7 @@ export function Header({
     <div className="flex items-baseline gap-3 border-b border-white/10 pb-3">
       <span className="font-mono-terminal text-[10px] text-gold">{index}</span>
       <div>
-        <h2 className="font-mono-terminal text-sm font-bold uppercase tracking-[0.2em] text-white">
+        <h2 className="font-mono-terminal text-sm font-bold uppercase tracking-[0.04em] text-white">
           {title}
         </h2>
         {subtitle && (

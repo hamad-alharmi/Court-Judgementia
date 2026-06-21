@@ -27,7 +27,7 @@ export function SettingsModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sharp max-w-md gap-0 border-white/15 bg-black p-0 font-mono-terminal">
         <DialogHeader className="border-b border-white/10 px-5 py-4">
-          <DialogTitle className="flex items-center gap-2 text-sm font-bold uppercase tracking-[0.2em] text-white">
+          <DialogTitle className="flex items-center gap-2 text-sm font-bold uppercase tracking-[0.04em] text-white">
             <Palette className="h-4 w-4 text-gold" />
             Settings
           </DialogTitle>
@@ -36,7 +36,7 @@ export function SettingsModal({
         <div className="flex flex-col gap-5 p-5">
           {/* Theme picker */}
           <div>
-            <div className="mb-2 font-mono-terminal text-[10px] uppercase tracking-[0.25em] text-white/50">
+            <div className="mb-2 font-mono-terminal text-[10px] uppercase tracking-[0.06em] text-white/50">
               Accent Theme
             </div>
             <div className="grid grid-cols-1 gap-2">
@@ -68,7 +68,7 @@ export function SettingsModal({
           {/* account */}
           {profile && (
             <div className="border-t border-white/10 pt-4">
-              <div className="mb-2 font-mono-terminal text-[10px] uppercase tracking-[0.25em] text-white/50">
+              <div className="mb-2 font-mono-terminal text-[10px] uppercase tracking-[0.06em] text-white/50">
                 Account
               </div>
               <div className="panel-2 sharp mb-3 flex items-center justify-between p-3">
@@ -91,7 +91,7 @@ export function SettingsModal({
                   logout();
                   onOpenChange(false);
                 }}
-                className="sharp h-10 w-full border border-white/20 bg-transparent font-mono-terminal text-xs font-bold uppercase tracking-[0.2em] text-white/70 hover:bg-white hover:text-black"
+                className="sharp h-10 w-full border border-white/20 bg-transparent font-mono-terminal text-xs font-bold uppercase tracking-[0.04em] text-white/70 hover:bg-white hover:text-black"
               >
                 <LogOut className="h-4 w-4" />
                 Sign Out

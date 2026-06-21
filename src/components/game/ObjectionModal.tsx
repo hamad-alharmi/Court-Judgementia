@@ -53,7 +53,7 @@ export function ObjectionModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sharp max-w-lg gap-0 border-white/15 bg-black p-0 font-mono-terminal">
         <DialogHeader className="border-b border-white/10 px-5 py-4">
-          <DialogTitle className="flex items-center gap-2 text-sm font-bold uppercase tracking-[0.2em] text-white">
+          <DialogTitle className="flex items-center gap-2 text-sm font-bold uppercase tracking-[0.04em] text-white">
             <Siren className="h-4 w-4 text-red-400" />
             Raise Objection
             <span className="ml-auto text-[10px] font-normal text-white/40">
@@ -87,7 +87,7 @@ export function ObjectionModal({
           <Button
             onClick={submit}
             disabled={busy || !grounds.trim()}
-            className="sharp mt-2 h-11 border border-red-500 bg-red-500 font-mono-terminal text-xs font-bold uppercase tracking-[0.25em] text-white hover:bg-red-600"
+            className="sharp mt-2 h-11 border border-red-500 bg-red-500 font-mono-terminal text-xs font-bold uppercase tracking-[0.06em] text-white hover:bg-red-600"
           >
             {busy ? (
               <>

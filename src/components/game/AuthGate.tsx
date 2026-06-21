@@ -58,10 +58,10 @@ export function AuthGate({ onAuthenticated }: { onAuthenticated: (p: Profile) =>
             <PixelScales />
           </div>
           <div className="text-center">
-            <h1 className="text-glow-gold text-gold font-mono-terminal text-xl font-bold tracking-[0.35em] sm:text-2xl">
+            <h1 className="text-glow-gold text-gold font-mono-terminal text-xl font-bold tracking-[0.1em] sm:text-2xl">
               JUDGEMENTIA
             </h1>
-            <p className="mt-1 font-mono-terminal text-[10px] uppercase tracking-[0.4em] text-white/40">
+            <p className="mt-1 font-mono-terminal text-[10px] uppercase tracking-[0.15em] text-white/40">
               Attorney Admission Terminal
             </p>
           </div>
@@ -134,7 +134,7 @@ export function AuthGate({ onAuthenticated }: { onAuthenticated: (p: Profile) =>
           </Tabs>
         </div>
 
-        <p className="mt-4 text-center font-mono-terminal text-[10px] uppercase tracking-[0.3em] text-white/25">
+        <p className="mt-4 text-center font-mono-terminal text-[10px] uppercase tracking-[0.08em] text-white/25">
           All proceedings recorded · Chief Justice Vanguard presiding
         </p>
       </div>
@@ -145,7 +145,7 @@ export function AuthGate({ onAuthenticated }: { onAuthenticated: (p: Profile) =>
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1.5">
-      <Label className="font-mono-terminal text-[10px] uppercase tracking-[0.25em] text-white/50">
+      <Label className="font-mono-terminal text-[10px] uppercase tracking-[0.06em] text-white/50">
         {label}
       </Label>
       {children}
@@ -158,7 +158,7 @@ function SubmitButton({ busy, label }: { busy: boolean; label: string }) {
     <Button
       type="submit"
       disabled={busy}
-      className="sharp mt-2 h-11 w-full border border-gold bg-gold font-mono-terminal text-xs font-bold uppercase tracking-[0.3em] text-black hover:bg-gold/85 disabled:opacity-50"
+      className="sharp mt-2 h-11 w-full border border-gold bg-gold font-mono-terminal text-xs font-bold uppercase tracking-[0.08em] text-black hover:bg-gold/85 disabled:opacity-50"
     >
       {busy ? "Processing..." : label}
     </Button>

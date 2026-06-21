@@ -47,41 +47,41 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
-/* ===== JUDGEMENTIA THEME — forced dark cyber-legal terminal ===== */
+/* ===== JUDGEMENTIA THEME — clean, sleek, premium dark ===== */
 :root,
 .dark {
-  --radius: 0.25rem;
+  --radius: 0.75rem;
 
-  /* Surfaces */
-  --background: oklch(0 0 0);                 /* pure black */
-  --foreground: oklch(0.985 0 0);             /* near-white */
-  --panel: oklch(0.16 0 0);                   /* #0a0a0a-ish dark panel */
-  --panel-2: oklch(0.22 0 0);                 /* slightly lighter panel */
+  /* Surfaces — slightly softer black with warm undertone */
+  --background: oklch(0.07 0.005 60);
+  --foreground: oklch(0.96 0 0);
+  --panel: oklch(0.12 0.004 60);
+  --panel-2: oklch(0.16 0.004 60);
 
-  --card: oklch(0.16 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.14 0 0);
-  --popover-foreground: oklch(0.985 0 0);
+  --card: oklch(0.12 0.004 60);
+  --card-foreground: oklch(0.96 0 0);
+  --popover: oklch(0.1 0.004 60);
+  --popover-foreground: oklch(0.96 0 0);
 
   /* Primary = gold */
-  --primary: oklch(0.82 0.15 84);             /* gold */
-  --primary-foreground: oklch(0.14 0 0);      /* black text on gold */
+  --primary: oklch(0.82 0.14 84);
+  --primary-foreground: oklch(0.1 0 0);
 
   /* Gold accent token */
-  --gold: oklch(0.82 0.15 84);
-  --gold-foreground: oklch(0.14 0 0);
+  --gold: oklch(0.82 0.14 84);
+  --gold-foreground: oklch(0.1 0 0);
 
-  --secondary: oklch(0.22 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.2 0 0);
-  --muted-foreground: oklch(0.62 0 0);
-  --accent: oklch(0.22 0 0);
-  --accent-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.18 0.004 60);
+  --secondary-foreground: oklch(0.96 0 0);
+  --muted: oklch(0.15 0.004 60);
+  --muted-foreground: oklch(0.6 0 0);
+  --accent: oklch(0.18 0.004 60);
+  --accent-foreground: oklch(0.96 0 0);
 
-  --destructive: oklch(0.62 0.22 25);
-  --border: oklch(1 0 0 / 14%);               /* subtle white borders */
-  --input: oklch(1 0 0 / 12%);
-  --ring: oklch(0.82 0.15 84);
+  --destructive: oklch(0.6 0.2 25);
+  --border: oklch(1 0 0 / 8%);
+  --input: oklch(1 0 0 / 8%);
+  --ring: oklch(0.82 0.14 84);
 
   --chart-1: oklch(0.82 0.15 84);
   --chart-2: oklch(0.7 0.15 150);
@@ -109,20 +109,17 @@
   body {
     @apply bg-background text-foreground;
     font-feature-settings: "ss01", "cv01", "cv03";
-    background-image:
-      radial-gradient(circle at 50% 0%, rgba(212, 175, 55, 0.05), transparent 55%),
-      linear-gradient(rgba(255,255,255,0.018) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(255,255,255,0.018) 1px, transparent 1px);
-    background-size: 100% 100%, 32px 32px, 32px 32px;
+    background-image: radial-gradient(circle at 50% 0%, rgba(212, 175, 55, 0.04), transparent 60%);
+    background-size: 100% 100%;
     background-attachment: fixed;
   }
 }
 
-/* ===== Utility classes for the terminal aesthetic ===== */
+/* ===== Utility classes ===== */
 @layer utilities {
   .font-mono-terminal {
-    font-family: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
-    letter-spacing: 0.01em;
+    font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+    letter-spacing: 0;
   }
   .text-gold {
     color: var(--gold);
@@ -135,15 +132,17 @@
   }
   .panel {
     background-color: var(--panel);
-    border: 1px solid color-mix(in oklab, white 12%, transparent);
+    border: 1px solid color-mix(in oklab, white 6%, transparent);
+    border-radius: var(--radius);
   }
   .panel-2 {
     background-color: var(--panel-2);
-    border: 1px solid color-mix(in oklab, white 10%, transparent);
+    border: 1px solid color-mix(in oklab, white 6%, transparent);
+    border-radius: calc(var(--radius) - 2px);
   }
-  /* Sharp hairline border, no rounding for terminal panels */
+  /* Soft rounded corners */
   .sharp {
-    border-radius: 0;
+    border-radius: var(--radius);
   }
   .scanlines {
     position: relative;
@@ -153,14 +152,7 @@
     position: absolute;
     inset: 0;
     pointer-events: none;
-    background: repeating-linear-gradient(
-      to bottom,
-      rgba(255, 255, 255, 0.02) 0px,
-      rgba(255, 255, 255, 0.02) 1px,
-      transparent 1px,
-      transparent 3px
-    );
-    mix-blend-mode: overlay;
+    background: none;
   }
   .glow-gold {
     box-shadow: 0 0 0 1px color-mix(in oklab, var(--gold) 40%, transparent),
@@ -170,10 +162,7 @@
     text-shadow: 0 0 12px color-mix(in oklab, var(--gold) 55%, transparent);
   }
   .grid-bg {
-    background-image:
-      linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
-    background-size: 24px 24px;
+    background-image: none;
   }
 }
 
