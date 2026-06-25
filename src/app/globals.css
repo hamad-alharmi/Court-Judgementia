@@ -47,7 +47,7 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
-/* ===== JUDGEMENTIA THEME — forced dark cyber-legal terminal ===== */
+/* ===== JUDGEMENTIA THEME — dark legal terminal ===== */
 :root,
 .dark {
   --radius: 0.25rem;

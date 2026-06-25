@@ -63,21 +63,6 @@ async function runGemini(systemPrompt: string, userPrompt: string): Promise<stri
   return res.response.text();
 }
 
-async function runZAI(systemPrompt: string, userPrompt: string): Promise<string> {
-  const ZAIModule: any = await import("z-ai-web-dev-sdk");
-  const ZAI = ZAIModule.default || ZAIModule;
-  const zai = await ZAI.create();
-  const completion: any = await zai.chat.completions.create({
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userPrompt },
-    ],
-    temperature: 0.7,
-    max_tokens: 1200,
-  });
-  return completion.choices?.[0]?.message?.content ?? "";
-}
-
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -128,18 +113,7 @@ async function handleVerdict(body: VerdictBody) {
       verdict = heuristicVerdict({ statements });
     }
   } else {
-    try {
-      const raw = await runZAI(JUDGE_SYSTEM_PROMPT, userPrompt);
-      if (raw && raw.trim()) {
-        verdict = parseJudgeResponse(raw);
-        engine = "z-ai";
-      } else {
-        verdict = heuristicVerdict({ statements });
-      }
-    } catch (e) {
-      console.error("z-ai verdict failed, falling back", e);
-      verdict = heuristicVerdict({ statements });
-    }
+    verdict = heuristicVerdict({ statements });
   }
 
   const prosecutorWon = didProsecutorWin(verdict.verdict);
@@ -187,18 +161,7 @@ async function handleObjection(body: ObjectionBody) {
       ruling = heuristicObjection(grounds);
     }
   } else {
-    try {
-      const raw = await runZAI(OBJECTION_SYSTEM_PROMPT, userPrompt);
-      if (raw && raw.trim()) {
-        ruling = parseObjectionResponse(raw);
-        engine = "z-ai";
-      } else {
-        ruling = heuristicObjection(grounds);
-      }
-    } catch (e) {
-      console.error("z-ai objection failed, falling back", e);
-      ruling = heuristicObjection(grounds);
-    }
+    ruling = heuristicObjection(grounds);
   }
 
   return NextResponse.json({ ruling, engine });

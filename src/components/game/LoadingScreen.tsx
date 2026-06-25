@@ -57,7 +57,7 @@ export function LoadingScreen({ onComplete }: { onComplete: () => void }) {
             JUDGEMENTIA
           </h1>
           <p className="font-mono-terminal text-[10px] uppercase tracking-[0.5em] text-white/50 sm:text-xs">
-            Cyber Legal Trial Protocol
+            Legal Trial Protocol
           </p>
         </div>
 

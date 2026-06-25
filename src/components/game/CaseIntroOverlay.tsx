@@ -34,7 +34,7 @@ export function CaseIntroOverlay({
         </h2>
         {scenario.generated && (
           <span className="mt-1 inline-block font-mono-terminal text-[9px] uppercase tracking-widest text-white/40">
-            ◂ AI-Generated · theme: {scenario.theme || "cyber"}
+            ◂ AI-Generated · theme: {scenario.theme || "murder mystery"}
           </span>
         )}
 

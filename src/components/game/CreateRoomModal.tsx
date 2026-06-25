@@ -41,7 +41,7 @@ export function CreateRoomModal({
   const [statementCount, setStatementCount] = useState<number>(4);
   const [aiRoles, setAiRoles] = useState<Set<AIRole>>(new Set(["defense"]));
   const [difficulty, setDifficulty] = useState<AIDifficulty>("medium");
-  const [theme, setTheme] = useState<string>("cyber");
+  const [theme, setTheme] = useState<string>("murder mystery");
   const [generating, setGenerating] = useState(false);
 
   function toggleRole(role: AIRole) {
@@ -108,7 +108,7 @@ export function CreateRoomModal({
             <Input
               value={theme}
               onChange={(e) => setTheme(e.target.value.slice(0, 40))}
-              placeholder="cyber, murder, joke, heist..."
+              placeholder="murder, theft, fraud, joke..."
               className="sharp border-white/20 bg-black text-white placeholder:text-white/25 focus-visible:border-gold"
             />
             <div className="mt-2 flex flex-wrap gap-1.5">

@@ -159,7 +159,7 @@ export function Matchmaking({ onEnterRoom }: { onEnterRoom: (id: string) => void
           prosecutorName: profile.username,
           statementCount: RANKED_STATEMENT_COUNT,
           aiDifficulty: "hard",
-          caseTheme: "cyber",
+          caseTheme: "murder mystery",
           phase: "lobby",
         });
         await rooms.create(room);
@@ -190,7 +190,7 @@ export function Matchmaking({ onEnterRoom }: { onEnterRoom: (id: string) => void
         defendantIsAI: true,
         statementCount: 4,
         aiDifficulty: "medium",
-        caseTheme: "cyber",
+        caseTheme: "murder mystery",
         phase: "lobby",
       });
       await rooms.create(room);

@@ -5,9 +5,9 @@ export const CASE_SCENARIOS: CaseScenario[] = [
   {
     id: "rogue-auditor",
     title: "The Rogue Auditor",
-    theme: "cyber",
+    theme: "corporate",
     facts:
-      "A cybersecurity auditor is accused of breaking past the company's mainframe security and leaking secret source code to the public web.",
+      "A company auditor is accused of breaking past internal security and leaking confidential financial records to the public.",
     evidence: [
       {
         id: "ra-ev1",

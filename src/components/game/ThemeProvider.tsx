@@ -11,7 +11,7 @@ interface ThemeDef {
 }
 
 // Each theme overrides the gold accent + a couple of supporting tokens.
-// The base dark cyber surface (black bg, white borders) stays constant.
+// The base dark surface (black bg, white borders) stays constant.
 export const THEMES: ThemeDef[] = [
   {
     id: "gold",

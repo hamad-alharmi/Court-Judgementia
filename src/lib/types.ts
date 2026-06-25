@@ -40,7 +40,7 @@ export interface CaseScenario {
   title: string;
   facts: string;
   evidence: EvidenceItem[];
-  /** custom theme tag (e.g. "cyber", "murder", "joke") — empty for presets */
+  /** custom theme tag (e.g. "murder", "theft", "joke") — empty for presets */
   theme?: string;
   /** true when AI-generated on the spot */
   generated?: boolean;
@@ -185,7 +185,6 @@ export const STATEMENT_OPTIONS = [1, 2, 3, 4, 6, 8] as const;
 export const AI_DIFFICULTIES: AIDifficulty[] = ["easy", "medium", "hard"];
 
 export const CASE_THEME_PRESETS = [
-  "cyber",
   "corporate fraud",
   "murder mystery",
   "heist",

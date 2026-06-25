@@ -46,21 +46,6 @@ async function runGemini(theme: string): Promise<string> {
   return res.response.text();
 }
 
-async function runZAI(theme: string): Promise<string> {
-  const ZAIModule: any = await import("z-ai-web-dev-sdk");
-  const ZAI = ZAIModule.default || ZAIModule;
-  const zai = await ZAI.create();
-  const completion: any = await zai.chat.completions.create({
-    messages: [
-      { role: "system", content: SYSTEM_PROMPT },
-      { role: "user", content: `Theme: "${theme}". Generate the case JSON now.` },
-    ],
-    temperature: 0.9,
-    max_tokens: 1500,
-  });
-  return completion.choices?.[0]?.message?.content ?? "";
-}
-
 function fallbackCase(theme: string): CaseScenario {
   // deterministic-ish fallback so the game still works without AI
   const t = theme.toLowerCase();
@@ -136,9 +121,9 @@ function fallbackCase(theme: string): CaseScenario {
       ],
     };
   }
-  // default cyber
+  // default
   return {
-    id: "gen-cyber",
+    id: "gen-theft",
     title: "The Midnight Breach",
     theme,
     generated: true,
@@ -176,7 +161,7 @@ function fallbackCase(theme: string): CaseScenario {
 export async function POST(req: NextRequest) {
   try {
     const { theme } = (await req.json()) as { theme: string };
-    const cleanTheme = (theme || "cyber").trim().slice(0, 60) || "cyber";
+    const cleanTheme = (theme || "murder mystery").trim().slice(0, 60) || "murder mystery";
 
     let raw = "";
     if (process.env.GEMINI_API_KEY) {
@@ -184,12 +169,6 @@ export async function POST(req: NextRequest) {
         raw = await runGemini(cleanTheme);
       } catch (e) {
         console.error("gemini case-gen failed, fallback", e);
-      }
-    } else {
-      try {
-        raw = await runZAI(cleanTheme);
-      } catch (e) {
-        console.error("z-ai case-gen failed, fallback", e);
       }
     }
 
@@ -231,7 +210,7 @@ export async function POST(req: NextRequest) {
           theme: cleanTheme,
           generated: true,
         };
-        return NextResponse.json({ scenario, engine: process.env.GEMINI_API_KEY ? "gemini" : "z-ai" });
+        return NextResponse.json({ scenario, engine: process.env.GEMINI_API_KEY ? "gemini" : "fallback" });
       } catch (e) {
         console.error("case parse failed, fallback", e);
       }

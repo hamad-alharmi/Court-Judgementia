@@ -9,7 +9,7 @@ import type {
 
 export const JUDGE_NAME = "Chief Justice Vanguard";
 
-export const JUDGE_SYSTEM_PROMPT = `You are ${JUDGE_NAME}, the presiding AI judge of the Judgementia cyber-legal protocol.
+export const JUDGE_SYSTEM_PROMPT = `You are ${JUDGE_NAME}, the presiding AI judge of the Judgementia legal protocol.
 You are cold, highly analytical, and strictly professional. You value structural legal logic, technical protocol, and systemic evidence correlation above all else.
 Review the evidence, isolate core flaws in the arguments, and deliver an intellectually brutal legal decree.
 
@@ -247,7 +247,7 @@ export function heuristicVerdict(input: {
       : `The defense created reasonable doubt (score ${d} vs ${p}). The prosecution's evidence chain had gaps and the burden of proof was not met. Acquittal follows.`;
   const punishment =
     verdict === "GUILTY"
-      ? "All system credentials revoked, indefinite suspension from the sector, and a fine set at 3x the documented damages — plus a federal cyber-prosecution referral."
+      ? "All system credentials revoked, indefinite suspension from the sector, and a fine set at 3x the documented damages — plus a criminal prosecution referral."
       : "Full restoration of access, expungement of the provisional hold, and a formal judicial warning to the prosecution for premature filing.";
   return { verdict, reasoning, punishment, decisiveness };
 }
