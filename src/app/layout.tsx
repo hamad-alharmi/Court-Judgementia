@@ -44,11 +44,9 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
       <head>
-        <script
-          async
-          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-8823186128402736"
-          crossOrigin="anonymous"
-        />
+        {/* Adsterra Popunder */}
+        {/* eslint-disable-next-line @next/next/no-sync-scripts */}
+        <script src="https://pl29892584.effectivecpmnetwork.com/51/46/17/514617bde1865162aebd289bf65f3920.js" />
       </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground font-mono-terminal`}
